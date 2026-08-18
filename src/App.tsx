@@ -1,94 +1,248 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Shield, Check, Copy, TrendingUp, Users, Globe, Eye,
-  Clock, ArrowUpRight, BarChart3, Smartphone, Laptop,
-  CheckCircle2, Sparkles, AlertCircle, X, ChevronRight, RefreshCw
+  Clock, ArrowUpRight, BarChart2, Smartphone, Monitor,
+  CheckCircle2, Sparkles, Activity, Zap, Layers, Code2,
+  Lock, ArrowRight, ChevronRight, Sliders, ExternalLink, Cpu
 } from 'lucide-react';
 
-interface MetricStat {
-  label: string;
-  value: string;
-  change: string;
-  trend: 'up' | 'down';
+interface RouteData {
+  path: string;
+  views: number;
+  pct: number;
+  dwell: string;
 }
 
-const SAMPLE_PAGES = [
-  { path: '/', views: 14280, pct: 46 },
-  { path: '/pricing', views: 5410, pct: 18 },
-  { path: '/blog/why-ditch-ga4', views: 3890, pct: 12 },
-  { path: '/docs/quickstart', views: 2450, pct: 8 },
-  { path: '/changelog', views: 1840, pct: 6 }
+interface SourceData {
+  source: string;
+  visitors: number;
+  pct: number;
+  bounce: string;
+}
+
+interface GeoData {
+  country: string;
+  code: string;
+  visitors: number;
+  pct: number;
+}
+
+interface GoalData {
+  name: string;
+  conversions: number;
+  rate: string;
+}
+
+const DOMAINS_LIST = ['fleadays.com', 'stillbeat.io', 'squiggles.ink', 'timbertracecrafts.com', 'ledgerdiff.com'];
+
+const ROUTES_DATA: Record<string, RouteData[]> = {
+  'fleadays.com': [
+    { path: '/', views: 34120, pct: 44, dwell: '3m 12s' },
+    { path: '/categories/flea-market', views: 18450, pct: 24, dwell: '2m 45s' },
+    { path: '/ca/los-angeles', views: 9820, pct: 13, dwell: '1m 55s' },
+    { path: '/tx/austin', views: 6410, pct: 8, dwell: '2m 10s' },
+    { path: '/fl/orlando', views: 4230, pct: 5, dwell: '1m 40s' }
+  ],
+  'stillbeat.io': [
+    { path: '/', views: 12450, pct: 52, dwell: '2m 30s' },
+    { path: '/docs/api', views: 5890, pct: 25, dwell: '4m 10s' },
+    { path: '/pricing', views: 3410, pct: 14, dwell: '1m 20s' },
+    { path: '/integrations/telegram', views: 1820, pct: 8, dwell: '3m 05s' }
+  ],
+  'squiggles.ink': [
+    { path: '/', views: 24800, pct: 62, dwell: '8m 45s' },
+    { path: '/canvas/demo', views: 8900, pct: 22, dwell: '12m 10s' },
+    { path: '/pricing', views: 3600, pct: 9, dwell: '1m 15s' },
+    { path: '/export', views: 2400, pct: 6, dwell: '2m 40s' }
+  ]
+};
+
+const SOURCES_DATA: SourceData[] = [
+  { source: 'Google Organic', visitors: 28450, pct: 45, bounce: '32%' },
+  { source: 'Direct / Bookmark', visitors: 14200, pct: 23, bounce: '24%' },
+  { source: 'GitHub Repositories', visitors: 8920, pct: 14, bounce: '28%' },
+  { source: 'Twitter / X', visitors: 6140, pct: 10, bounce: '41%' },
+  { source: 'Hacker News', visitors: 4890, pct: 8, bounce: '36%' }
 ];
 
-const SAMPLE_REFERRERS = [
-  { source: 'Google Search', visitors: 9450, pct: 42 },
-  { source: 'Direct / Bookmark', visitors: 4890, pct: 22 },
-  { source: 'GitHub', visitors: 3120, pct: 14 },
-  { source: 'Twitter / X', visitors: 2410, pct: 11 },
-  { source: 'Hacker News', visitors: 1980, pct: 9 }
+const GEO_DATA: GeoData[] = [
+  { country: 'United States', code: 'US', visitors: 34200, pct: 52 },
+  { country: 'Germany', code: 'DE', visitors: 8400, pct: 13 },
+  { country: 'United Kingdom', code: 'GB', visitors: 7100, pct: 11 },
+  { country: 'Canada', code: 'CA', visitors: 5200, pct: 8 },
+  { country: 'Japan', code: 'JP', visitors: 4100, pct: 6 },
+  { country: 'Australia', code: 'AU', visitors: 3200, pct: 5 }
 ];
 
-const SAMPLE_COUNTRIES = [
-  { name: 'United States', code: 'US', visitors: 11200, pct: 51 },
-  { name: 'United Kingdom', code: 'GB', visitors: 2850, pct: 13 },
-  { name: 'Germany', code: 'DE', visitors: 2100, pct: 10 },
-  { name: 'Canada', code: 'CA', visitors: 1650, pct: 8 },
-  { name: 'Japan', code: 'JP', visitors: 1200, pct: 5 }
+const GOALS_DATA: GoalData[] = [
+  { name: 'Newsletter Subscription', conversions: 1840, rate: '4.2%' },
+  { name: 'Pro Plan Checkout Initiated', conversions: 420, rate: '1.8%' },
+  { name: 'API Key Generated', conversions: 890, rate: '3.4%' },
+  { name: 'External Link Click (Etsy/Docs)', conversions: 3120, rate: '7.1%' }
+];
+
+const FRAMEWORKS = [
+  { id: 'next', name: 'Next.js 14/15' },
+  { id: 'html', name: 'HTML / Static' },
+  { id: 'react', name: 'React + Vite' },
+  { id: 'astro', name: 'Astro' },
+  { id: 'wordpress', name: 'WordPress' },
+  { id: 'laravel', name: 'Laravel Blade' }
 ];
 
 export default function App() {
-  const [timeframe, setTimeframe] = useState<'today' | '7d' | '30d'>('7d');
-  const [domainInput, setDomainInput] = useState('fleadays.com');
+  const [selectedDomain, setSelectedDomain] = useState('fleadays.com');
+  const [timeframe, setTimeframe] = useState<'24h' | '7d' | '30d' | 'all'>('7d');
+  const [activeTab, setActiveTab] = useState<'routes' | 'sources' | 'geo' | 'devices' | 'goals'>('routes');
+  const [customDomainInput, setCustomDomainInput] = useState('fleadays.com');
+  const [selectedFramework, setSelectedFramework] = useState('next');
   const [copiedSnippet, setCopiedSnippet] = useState(false);
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
-  const [activeTab, setActiveTab] = useState<'pages' | 'sources' | 'locations' | 'devices'>('pages');
+  const [calcViews, setCalcViews] = useState(100000);
+  const [livePings, setLivePings] = useState([
+    { id: 1, path: '/categories/flea-market', country: 'US', time: 'Just now', latency: '42ms' },
+    { id: 2, path: '/ca/los-angeles', country: 'GB', time: '3s ago', latency: '38ms' },
+    { id: 3, path: '/', country: 'DE', time: '7s ago', latency: '45ms' }
+  ]);
 
-  const snippet = `<script defer data-domain="${domainInput || 'yourdomain.com'}" src="https://safemetrics.io/js/script.js"></script>`;
+  // Simulate live incoming event stream
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const paths = ['/', '/categories/flea-market', '/pricing', '/ca/los-angeles', '/docs', '/login'];
+      const countries = ['US', 'DE', 'GB', 'CA', 'JP', 'FR', 'AU'];
+      const newPing = {
+        id: Date.now(),
+        path: paths[Math.floor(Math.random() * paths.length)],
+        country: countries[Math.floor(Math.random() * countries.length)],
+        time: 'Just now',
+        latency: `${Math.floor(Math.random() * 25 + 30)}ms`
+      };
+      setLivePings(prev => [newPing, ...prev.slice(0, 3)]);
+    }, 4500);
+    return () => clearInterval(interval);
+  }, []);
 
-  const handleCopySnippet = () => {
-    navigator.clipboard.writeText(snippet);
+  const getFrameworkSnippet = () => {
+    const d = customDomainInput || 'yourdomain.com';
+    switch (selectedFramework) {
+      case 'next':
+        return `// app/layout.tsx
+import Script from 'next/script';
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <head>
+        <Script
+          defer
+          data-domain="${d}"
+          src="https://safemetrics.io/js/script.js"
+          strategy="afterInteractive"
+        />
+      </head>
+      <body>{children}</body>
+    </html>
+  );
+}`;
+      case 'react':
+        return `<!-- index.html <head> -->
+<script defer data-domain="${d}" src="https://safemetrics.io/js/script.js"></script>`;
+      case 'astro':
+        return `---
+// src/layouts/Layout.astro
+---
+<head>
+  <script is:inline defer data-domain="${d}" src="https://safemetrics.io/js/script.js"></script>
+</head>`;
+      case 'laravel':
+        return `{{-- resources/views/layouts/app.blade.php --}}
+<script defer data-domain="${d}" src="https://safemetrics.io/js/script.js"></script>`;
+      case 'wordpress':
+        return `// Add to your active child theme's functions.php
+add_action('wp_head', function() {
+    echo '<script defer data-domain="${d}" src="https://safemetrics.io/js/script.js"></script>';
+});`;
+      default:
+        return `<script defer data-domain="${d}" src="https://safemetrics.io/js/script.js"></script>`;
+    }
+  };
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(getFrameworkSnippet());
     setCopiedSnippet(true);
     setTimeout(() => setCopiedSnippet(false), 2000);
   };
 
+  const currentRoutes = ROUTES_DATA[selectedDomain] || ROUTES_DATA['fleadays.com'];
+
+  // Carbon & Speed savings math
+  const kbSavedMonthly = (calcViews * (45 - 0.8)).toFixed(0);
+  const mbSavedMonthly = (Number(kbSavedMonthly) / 1024).toFixed(1);
+  const hoursSaved = ((calcViews * 0.4) / 3600).toFixed(1);
+
   return (
-    <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 selection:bg-emerald-500 selection:text-white">
-      {/* Top Banner */}
-      <div className="bg-gradient-to-r from-emerald-900/40 via-teal-900/30 to-emerald-900/40 border-b border-emerald-500/20 py-2 px-4 text-center text-xs font-medium text-emerald-300 flex items-center justify-center gap-2">
-        <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-        <span>100% Cookie-Free &amp; GDPR Compliant. No Cookie Banner Required.</span>
+    <div className="min-h-screen flex flex-col bg-cosmic-950 text-slate-100 selection:bg-cyan-500 selection:text-white">
+      {/* Brand Top Signal Bar */}
+      <div className="bg-cosmic-900/90 border-b border-cyan-500/20 py-2 px-4 text-xs font-medium text-slate-300 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 max-w-6xl mx-auto w-full justify-between">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+            <span className="text-cyan-300 font-semibold">Zero-Telemetry Signal Grid Active</span>
+            <span className="hidden sm:inline text-slate-500">&bull; 100% Cookie-Free &bull; Zero Banner Mandate &bull; &lt;1KB Payload</span>
+          </div>
+          <div className="hidden md:flex items-center gap-4 text-[11px] text-slate-400">
+            <span>Latency: <strong className="text-emerald-400">12ms</strong></span>
+            <span>GDPR/CCPA: <strong className="text-cyan-400">Certified Safe</strong></span>
+          </div>
+        </div>
       </div>
 
-      {/* Header */}
-      <header className="sticky top-0 z-40 backdrop-blur-md bg-slate-950/80 border-b border-slate-800/80">
+      {/* Primary Header */}
+      <header className="sticky top-0 z-50 backdrop-blur-xl bg-cosmic-950/80 border-b border-slate-800/80">
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
+          {/* Logo & Emblem */}
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center shadow-lg shadow-emerald-500/20">
-              <Shield className="w-5 h-5 text-white" />
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-indigo-600 p-[1px] shadow-glow-cyan">
+              <div className="w-full h-full bg-cosmic-950 rounded-[11px] flex items-center justify-center">
+                <svg className="w-6 h-6" viewBox="0 0 32 32" fill="none">
+                  <polygon points="16,2 29,8 29,20 16,30 3,20 3,8" fill="#090d16" stroke="url(#hGrad)" strokeWidth="2" />
+                  <path d="M8 17 L12 17 L14 11 L18 22 L20 15 L24 17" stroke="url(#hGrad)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                  <defs>
+                    <linearGradient id="hGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#22d3ee" />
+                      <stop offset="100%" stopColor="#6366f1" />
+                    </linearGradient>
+                  </defs>
+                </svg>
+              </div>
             </div>
             <div>
-              <span className="font-bold text-lg tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white via-slate-100 to-emerald-300">
-                SafeMetrics
-              </span>
-              <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
-                SaaS v1.0
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-lg tracking-tight text-white">SafeMetrics</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-mono font-semibold uppercase">
+                  SaaS v1.0
+                </span>
+              </div>
+              <p className="text-[10px] text-slate-400 tracking-wider">PRIVACY TRAFFIC ENGINE</p>
             </div>
           </div>
 
           <nav className="hidden md:flex items-center space-x-6 text-sm text-slate-300">
-            <a href="#demo" className="hover:text-white transition">Live Demo</a>
-            <a href="#compare" className="hover:text-white transition">vs GA4</a>
-            <a href="#embed" className="hover:text-white transition">Install Snippet</a>
-            <a href="#pricing" className="hover:text-white transition">Pricing</a>
+            <a href="#signal-center" className="hover:text-cyan-400 transition flex items-center gap-1">
+              <Activity className="w-3.5 h-3.5 text-cyan-400" /> Signal Studio
+            </a>
+            <a href="#install" className="hover:text-cyan-400 transition">Install Snippet</a>
+            <a href="#benchmarks" className="hover:text-cyan-400 transition">vs GA4</a>
+            <a href="#calculator" className="hover:text-cyan-400 transition">Speed Impact</a>
+            <a href="#pricing" className="hover:text-cyan-400 transition">Pricing</a>
           </nav>
 
           <div className="flex items-center space-x-3">
             <a
-              href="#pricing"
-              className="px-4 py-2 text-xs font-semibold rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 text-white hover:from-emerald-500 hover:to-teal-500 shadow-md shadow-emerald-600/20 transition"
+              href="#install"
+              className="px-4 py-2 text-xs font-semibold rounded-lg bg-gradient-to-r from-cyan-500 to-indigo-600 text-white hover:from-cyan-400 hover:to-indigo-500 shadow-glow-cyan transition flex items-center gap-1.5"
             >
-              Get Started Free
+              <Zap className="w-3.5 h-3.5" /> Launch Free Site
             </a>
           </div>
         </div>
@@ -97,230 +251,394 @@ export default function App() {
       {/* Main Content */}
       <main className="flex-1">
         {/* Hero Section */}
-        <section className="py-16 md:py-20 px-4 relative overflow-hidden text-center">
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-emerald-900/20 via-slate-950 to-slate-950 -z-10" />
+        <section className="py-16 md:py-24 px-4 relative overflow-hidden text-center">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[350px] bg-gradient-to-tr from-cyan-600/15 via-indigo-600/15 to-transparent blur-[120px] rounded-full pointer-events-none -z-10" />
 
           <div className="max-w-4xl mx-auto mb-12">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs font-medium mb-4">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              Over 45x lighter than Google Analytics &bull; &lt;1 KB script
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/25 text-cyan-300 text-xs font-mono font-medium mb-6">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+              <span>THE PRIVACY-NATIVE WEB ANALYTICS PLATFORM</span>
             </div>
 
-            <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight text-white mb-6">
-              Web Analytics That Respects <br className="hidden sm:inline" />
-              <span className="bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 to-teal-300">
-                Visitor Privacy &amp; Your Time
+            <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight text-white mb-6 leading-tight">
+              Real-Time Traffic Intelligence <br className="hidden sm:inline" />
+              <span className="bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-teal-300 to-indigo-400">
+                Without Cookies, Lag, or Consent Banners
               </span>
             </h1>
 
-            <p className="text-base md:text-lg text-slate-400 max-w-2xl mx-auto mb-8">
-              Track essential visitor stats in real time without cookies, complex menus, or 24-hour delays. Everything you need on a single, beautiful dashboard.
+            <p className="text-base md:text-lg text-slate-400 max-w-2xl mx-auto mb-8 leading-relaxed">
+              Ditch heavy, slow, invasive tracking scripts. SafeMetrics delivers crystal-clear live metrics in an ultra-compact &lt;1KB footprint that never sells your data or annoys visitors.
             </p>
 
-            <div className="flex flex-wrap items-center justify-center gap-4">
-              <a
-                href="#demo"
-                className="px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-sm font-semibold text-white hover:from-emerald-500 hover:to-teal-500 shadow-lg shadow-emerald-600/30 transition flex items-center gap-2"
-              >
-                <span>View Interactive Demo</span>
-                <ChevronRight className="w-4 h-4" />
-              </a>
-              <a
-                href="#embed"
-                className="px-6 py-3 rounded-xl bg-slate-900 border border-slate-800 text-sm font-semibold text-slate-300 hover:text-white hover:bg-slate-850 transition"
-              >
-                Get Embed Snippet
-              </a>
+            {/* Micro-Features Bar */}
+            <div className="flex flex-wrap items-center justify-center gap-6 text-xs text-slate-300 mb-10 font-medium">
+              <span className="flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4 text-cyan-400" /> No Cookie Consent Banner</span>
+              <span className="flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4 text-cyan-400" /> &lt;0.8 KB Embed Script</span>
+              <span className="flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4 text-cyan-400" /> 100% GDPR &amp; CCPA Compliant</span>
+              <span className="flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4 text-cyan-400" /> Zero IP Storage</span>
+            </div>
+
+            {/* Live Telemetry Radar Stream */}
+            <div className="max-w-2xl mx-auto bg-cosmic-900/80 border border-cyan-500/20 rounded-xl p-3 backdrop-blur-md shadow-xl text-left">
+              <div className="flex items-center justify-between text-[11px] font-mono text-slate-400 pb-2 border-b border-slate-800">
+                <span className="flex items-center gap-1.5 text-cyan-400">
+                  <Activity className="w-3.5 h-3.5 animate-pulse" /> Live Telemetry Feed
+                </span>
+                <span>Active Properties: {DOMAINS_LIST.length}</span>
+              </div>
+              <div className="space-y-1.5 pt-2 font-mono text-xs">
+                {livePings.map(ping => (
+                  <div key={ping.id} className="flex items-center justify-between text-slate-300 p-1 rounded hover:bg-cosmic-850 transition">
+                    <div className="flex items-center gap-2">
+                      <span className="px-1.5 py-0.2 rounded bg-cyan-500/10 text-cyan-400 text-[10px] font-bold">{ping.country}</span>
+                      <span className="text-slate-200">{ping.path}</span>
+                    </div>
+                    <div className="flex items-center gap-3 text-slate-500 text-[11px]">
+                      <span>{ping.latency}</span>
+                      <span>{ping.time}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
-          {/* Interactive Live Dashboard Demo */}
-          <div id="demo" className="max-w-5xl mx-auto bg-slate-900/90 border border-slate-800 rounded-2xl p-6 md:p-8 shadow-2xl backdrop-blur-xl text-left">
-            {/* Dashboard Header Bar */}
-            <div className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-slate-800/80 mb-6">
-              <div className="flex items-center gap-3">
-                <div className="w-3 h-3 rounded-full bg-emerald-500 animate-ping" />
-                <div>
-                  <span className="text-sm font-bold text-white">fleadays.com</span>
-                  <span className="ml-2 text-xs text-slate-400">&bull; Live Dashboard</span>
+          {/* Interactive SafeMetrics Signal Center */}
+          <div id="signal-center" className="max-w-5xl mx-auto glass-card rounded-2xl p-6 md:p-8 shadow-2xl text-left relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-96 h-96 bg-cyan-500/5 rounded-full blur-3xl pointer-events-none" />
+
+            {/* Studio Navigation & Domain Selector */}
+            <div className="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-slate-800 mb-6">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2 bg-cosmic-950 border border-slate-800 rounded-lg p-1">
+                  <Globe className="w-4 h-4 text-cyan-400 ml-2" />
+                  <select
+                    value={selectedDomain}
+                    onChange={e => setSelectedDomain(e.target.value)}
+                    className="bg-transparent text-sm font-semibold text-white focus:outline-none pr-3 cursor-pointer"
+                  >
+                    {DOMAINS_LIST.map(d => (
+                      <option key={d} value={d} className="bg-cosmic-900 text-slate-200">{d}</option>
+                    ))}
+                  </select>
                 </div>
-                <div className="px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold">
-                  18 Active Now
+
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs font-semibold">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                  <span>32 Live Sessions</span>
                 </div>
               </div>
 
               {/* Timeframe selector */}
-              <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs font-medium">
-                {(['today', '7d', '30d'] as const).map(tf => (
+              <div className="flex items-center gap-1 bg-cosmic-950 p-1 rounded-lg border border-slate-800 text-xs font-medium">
+                {(['24h', '7d', '30d', 'all'] as const).map(tf => (
                   <button
                     key={tf}
                     onClick={() => setTimeframe(tf)}
-                    className={`px-3 py-1 rounded transition capitalize ${
-                      timeframe === tf ? 'bg-emerald-600 text-white font-semibold' : 'text-slate-400 hover:text-white'
+                    className={`px-3 py-1 rounded transition uppercase ${
+                      timeframe === tf ? 'bg-gradient-to-r from-cyan-500 to-indigo-600 text-white font-bold shadow-sm' : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    {tf === 'today' ? 'Today' : tf === '7d' ? 'Last 7 Days' : 'Last 30 Days'}
+                    {tf}
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Stat Cards */}
+            {/* Key Metrics Cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-              <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800">
+              <div className="p-4 rounded-xl bg-cosmic-950/80 border border-cyan-500/15">
                 <div className="flex items-center justify-between text-slate-400 text-xs mb-1">
-                  <span>Unique Visitors</span>
-                  <Users className="w-4 h-4 text-emerald-400" />
+                  <span>Unique Sessions</span>
+                  <Users className="w-4 h-4 text-cyan-400" />
                 </div>
-                <div className="text-2xl font-bold text-white">22,480</div>
-                <div className="text-[11px] text-emerald-400 mt-1 flex items-center gap-0.5">
-                  <TrendingUp className="w-3 h-3" /> +14.2% vs prev period
+                <div className="text-2xl font-extrabold text-white">41,280</div>
+                <div className="text-[11px] text-emerald-400 mt-1 flex items-center gap-0.5 font-medium">
+                  <TrendingUp className="w-3 h-3" /> +16.4% vs last week
                 </div>
               </div>
 
-              <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800">
+              <div className="p-4 rounded-xl bg-cosmic-950/80 border border-indigo-500/15">
                 <div className="flex items-center justify-between text-slate-400 text-xs mb-1">
-                  <span>Total Pageviews</span>
-                  <Eye className="w-4 h-4 text-teal-400" />
+                  <span>Telemetry Pageviews</span>
+                  <Eye className="w-4 h-4 text-indigo-400" />
                 </div>
-                <div className="text-2xl font-bold text-white">68,910</div>
-                <div className="text-[11px] text-emerald-400 mt-1 flex items-center gap-0.5">
-                  <TrendingUp className="w-3 h-3" /> +18.7% vs prev period
+                <div className="text-2xl font-extrabold text-white">128,450</div>
+                <div className="text-[11px] text-emerald-400 mt-1 flex items-center gap-0.5 font-medium">
+                  <TrendingUp className="w-3 h-3" /> +21.2% velocity
                 </div>
               </div>
 
-              <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800">
+              <div className="p-4 rounded-xl bg-cosmic-950/80 border border-teal-500/15">
                 <div className="flex items-center justify-between text-slate-400 text-xs mb-1">
-                  <span>Bounce Rate</span>
-                  <BarChart3 className="w-4 h-4 text-amber-400" />
+                  <span>Bounce Index</span>
+                  <BarChart2 className="w-4 h-4 text-teal-400" />
                 </div>
-                <div className="text-2xl font-bold text-white">38.4%</div>
-                <div className="text-[11px] text-emerald-400 mt-1 flex items-center gap-0.5">
-                  <TrendingUp className="w-3 h-3" /> -2.1% improvement
+                <div className="text-2xl font-extrabold text-white">31.8%</div>
+                <div className="text-[11px] text-emerald-400 mt-1 flex items-center gap-0.5 font-medium">
+                  <TrendingUp className="w-3 h-3" /> -3.4% lower bounce
                 </div>
               </div>
 
-              <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800">
+              <div className="p-4 rounded-xl bg-cosmic-950/80 border border-cyan-500/15">
                 <div className="flex items-center justify-between text-slate-400 text-xs mb-1">
-                  <span>Avg Visit Duration</span>
-                  <Clock className="w-4 h-4 text-indigo-400" />
+                  <span>Mean Session Dwell</span>
+                  <Clock className="w-4 h-4 text-cyan-400" />
                 </div>
-                <div className="text-2xl font-bold text-white">2m 44s</div>
-                <div className="text-[11px] text-emerald-400 mt-1 flex items-center gap-0.5">
-                  <TrendingUp className="w-3 h-3" /> +32s engagement
+                <div className="text-2xl font-extrabold text-white">3m 18s</div>
+                <div className="text-[11px] text-cyan-400 mt-1 flex items-center gap-0.5 font-medium">
+                  <TrendingUp className="w-3 h-3" /> +45s engagement
                 </div>
               </div>
             </div>
 
-            {/* Visual Traffic Bar Chart */}
-            <div className="mb-8 p-4 rounded-xl bg-slate-950/60 border border-slate-800">
-              <div className="text-xs font-semibold text-slate-400 mb-3">Daily Visitors Trend</div>
-              <div className="h-32 flex items-end justify-between gap-2 pt-4">
-                {[3200, 3450, 4100, 3900, 4800, 5200, 4900].map((val, idx) => (
-                  <div key={idx} className="flex-1 flex flex-col items-center gap-1 group">
-                    <div
-                      style={{ height: `${(val / 5500) * 100}%` }}
-                      className="w-full rounded-t bg-gradient-to-t from-emerald-600 to-teal-400 group-hover:from-emerald-500 group-hover:to-teal-300 transition relative"
-                    >
-                      <div className="absolute -top-7 left-1/2 -translate-x-1/2 bg-slate-800 text-[10px] text-white px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition whitespace-nowrap pointer-events-none">
-                        {val.toLocaleString()}
+            {/* Glowing SVG Spline Area Chart */}
+            <div className="mb-8 p-5 rounded-xl bg-cosmic-950/90 border border-slate-800 relative">
+              <div className="flex items-center justify-between text-xs font-semibold text-slate-300 mb-4">
+                <div className="flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-cyan-400" />
+                  <span>Visitor Traffic Spline</span>
+                </div>
+                <span className="text-[11px] text-slate-500 font-mono">Aggregated in-memory &bull; Zero PII</span>
+              </div>
+
+              <div className="h-44 w-full relative">
+                <svg className="w-full h-full overflow-visible" viewBox="0 0 500 120" preserveAspectRatio="none">
+                  <defs>
+                    <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.35" />
+                      <stop offset="100%" stopColor="#6366f1" stopOpacity="0.0" />
+                    </linearGradient>
+                    <linearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="0%" stopColor="#22d3ee" />
+                      <stop offset="50%" stopColor="#06b6d4" />
+                      <stop offset="100%" stopColor="#818cf8" />
+                    </linearGradient>
+                  </defs>
+                  {/* Grid Lines */}
+                  <line x1="0" y1="30" x2="500" y2="30" stroke="rgba(255,255,255,0.05)" strokeDasharray="3 3" />
+                  <line x1="0" y1="60" x2="500" y2="60" stroke="rgba(255,255,255,0.05)" strokeDasharray="3 3" />
+                  <line x1="0" y1="90" x2="500" y2="90" stroke="rgba(255,255,255,0.05)" strokeDasharray="3 3" />
+
+                  {/* Area Fill */}
+                  <path
+                    d="M 0,90 Q 70,40 140,65 T 280,30 T 420,45 T 500,20 L 500,120 L 0,120 Z"
+                    fill="url(#areaGrad)"
+                  />
+                  {/* Glowing Stroke */}
+                  <path
+                    d="M 0,90 Q 70,40 140,65 T 280,30 T 420,45 T 500,20"
+                    fill="none"
+                    stroke="url(#lineGrad)"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                  />
+                  {/* Data Point Pulsers */}
+                  <circle cx="280" cy="30" r="4" fill="#22d3ee" className="animate-pulse" />
+                  <circle cx="500" cy="20" r="4" fill="#818cf8" />
+                </svg>
+              </div>
+
+              <div className="flex justify-between text-[10px] text-slate-500 font-mono mt-2 pt-2 border-t border-slate-850">
+                <span>Mon</span>
+                <span>Tue</span>
+                <span>Wed</span>
+                <span>Thu</span>
+                <span>Fri</span>
+                <span>Sat</span>
+                <span>Sun (Peak)</span>
+              </div>
+            </div>
+
+            {/* Breakdown Explorer Tabs */}
+            <div className="flex items-center gap-2 border-b border-slate-800 pb-3 mb-4 text-xs font-semibold">
+              {(['routes', 'sources', 'geo', 'goals'] as const).map(tab => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`px-3 py-1.5 rounded-lg transition capitalize flex items-center gap-1.5 ${
+                    activeTab === tab
+                      ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {tab === 'routes' && <Layers className="w-3.5 h-3.5" />}
+                  {tab === 'sources' && <ArrowUpRight className="w-3.5 h-3.5" />}
+                  {tab === 'geo' && <Globe className="w-3.5 h-3.5" />}
+                  {tab === 'goals' && <Sparkles className="w-3.5 h-3.5" />}
+                  <span>{tab}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Tab Views */}
+            {activeTab === 'routes' && (
+              <div className="space-y-2">
+                {currentRoutes.map((r, i) => (
+                  <div key={i} className="p-2.5 rounded-lg bg-cosmic-950/70 border border-slate-800/80 flex items-center justify-between text-xs">
+                    <span className="font-mono text-cyan-300 font-medium truncate max-w-xs">{r.path}</span>
+                    <div className="flex items-center gap-6">
+                      <span className="text-slate-400">Dwell: <strong className="text-slate-200">{r.dwell}</strong></span>
+                      <span className="font-mono text-white font-bold">{r.views.toLocaleString()}</span>
+                      <div className="w-16 h-1.5 bg-slate-850 rounded-full overflow-hidden hidden sm:block">
+                        <div style={{ width: `${r.pct}%` }} className="h-full bg-gradient-to-r from-cyan-500 to-indigo-500 rounded-full" />
                       </div>
                     </div>
-                    <span className="text-[10px] text-slate-500">Day {idx + 1}</span>
                   </div>
                 ))}
               </div>
-            </div>
+            )}
 
-            {/* Breakdown Tables Grid */}
-            <div className="grid md:grid-cols-2 gap-6">
-              {/* Top Pages */}
-              <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800">
-                <div className="text-xs font-semibold text-slate-300 mb-3 flex items-center justify-between">
-                  <span>Top Pages</span>
-                  <span className="text-slate-500 font-normal">Views</span>
-                </div>
-                <div className="space-y-2 text-xs">
-                  {SAMPLE_PAGES.map((p, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-1.5 rounded hover:bg-slate-900 transition">
-                      <span className="font-mono text-slate-300 truncate max-w-[200px]">{p.path}</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-slate-400 font-medium">{p.views.toLocaleString()}</span>
-                        <div className="w-12 h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                          <div style={{ width: `${p.pct}%` }} className="h-full bg-emerald-500 rounded-full" />
-                        </div>
+            {activeTab === 'sources' && (
+              <div className="space-y-2">
+                {SOURCES_DATA.map((s, i) => (
+                  <div key={i} className="p-2.5 rounded-lg bg-cosmic-950/70 border border-slate-800/80 flex items-center justify-between text-xs">
+                    <span className="text-slate-200 font-medium">{s.source}</span>
+                    <div className="flex items-center gap-6">
+                      <span className="text-slate-400">Bounce: <strong className="text-slate-200">{s.bounce}</strong></span>
+                      <span className="font-mono text-white font-bold">{s.visitors.toLocaleString()}</span>
+                      <div className="w-16 h-1.5 bg-slate-850 rounded-full overflow-hidden hidden sm:block">
+                        <div style={{ width: `${s.pct}%` }} className="h-full bg-gradient-to-r from-teal-400 to-cyan-500 rounded-full" />
                       </div>
                     </div>
-                  ))}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {activeTab === 'geo' && (
+              <div className="grid sm:grid-cols-2 gap-3">
+                {GEO_DATA.map((g, i) => (
+                  <div key={i} className="p-3 rounded-lg bg-cosmic-950/70 border border-slate-800/80 flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 text-[10px] font-bold font-mono">{g.code}</span>
+                      <span className="text-slate-200">{g.country}</span>
+                    </div>
+                    <span className="font-mono text-white font-bold">{g.visitors.toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {activeTab === 'goals' && (
+              <div className="space-y-2">
+                {GOALS_DATA.map((goal, i) => (
+                  <div key={i} className="p-3 rounded-lg bg-cosmic-950/70 border border-slate-800/80 flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                      <span className="text-slate-200 font-semibold">{goal.name}</span>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <span className="text-slate-400">Rate: <strong className="text-emerald-400">{goal.rate}</strong></span>
+                      <span className="font-mono text-cyan-300 font-bold">{goal.conversions.toLocaleString()} conv.</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* Multi-Framework Embed Studio */}
+        <section id="install" className="py-16 px-4 bg-cosmic-900/60 border-t border-slate-800/80">
+          <div className="max-w-4xl mx-auto">
+            <div className="text-center mb-8">
+              <h2 className="text-2xl md:text-3xl font-bold text-white mb-2">1-Minute Instant Integration Studio</h2>
+              <p className="text-sm text-slate-400">Select your framework, enter your domain, and drop in the ultra-compact beacon script.</p>
+            </div>
+
+            <div className="glass-card rounded-2xl p-6 shadow-2xl">
+              {/* Domain Input */}
+              <div className="mb-6">
+                <label className="block text-xs font-mono font-semibold text-cyan-300 mb-2">Your Production Website Domain</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={customDomainInput}
+                    onChange={e => setCustomDomainInput(e.target.value)}
+                    placeholder="mybrand.com"
+                    className="w-full bg-cosmic-950 border border-slate-800 rounded-lg px-4 py-2.5 text-sm text-slate-100 font-mono focus:outline-none focus:border-cyan-500 transition"
+                  />
                 </div>
               </div>
 
-              {/* Top Referrers */}
-              <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800">
-                <div className="text-xs font-semibold text-slate-300 mb-3 flex items-center justify-between">
-                  <span>Top Traffic Sources</span>
-                  <span className="text-slate-500 font-normal">Visitors</span>
-                </div>
-                <div className="space-y-2 text-xs">
-                  {SAMPLE_REFERRERS.map((r, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-1.5 rounded hover:bg-slate-900 transition">
-                      <span className="text-slate-300">{r.source}</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-slate-400 font-medium">{r.visitors.toLocaleString()}</span>
-                        <div className="w-12 h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                          <div style={{ width: `${r.pct}%` }} className="h-full bg-teal-500 rounded-full" />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+              {/* Framework Selector Tabs */}
+              <div className="flex flex-wrap gap-2 mb-4">
+                {FRAMEWORKS.map(fw => (
+                  <button
+                    key={fw.id}
+                    onClick={() => setSelectedFramework(fw.id)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                      selectedFramework === fw.id
+                        ? 'bg-gradient-to-r from-cyan-500 to-indigo-600 text-white shadow-glow-cyan'
+                        : 'bg-cosmic-950 text-slate-400 hover:text-white border border-slate-800'
+                    }`}
+                  >
+                    {fw.name}
+                  </button>
+                ))}
+              </div>
+
+              {/* Code Snippet Box */}
+              <div className="relative">
+                <pre className="bg-cosmic-950 border border-slate-800 rounded-xl p-4 font-mono text-xs text-cyan-300 overflow-x-auto leading-relaxed">
+                  {getFrameworkSnippet()}
+                </pre>
+                <button
+                  onClick={handleCopy}
+                  className="absolute top-3 right-3 px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-cosmic-950 font-bold text-xs flex items-center gap-1.5 transition shadow-glow-cyan"
+                >
+                  {copiedSnippet ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedSnippet ? 'Copied to Clipboard!' : 'Copy Code'}</span>
+                </button>
               </div>
             </div>
           </div>
         </section>
 
-        {/* Head-to-Head Comparison */}
-        <section id="compare" className="py-16 px-4 bg-slate-950 border-t border-slate-900">
+        {/* Head-to-Head Architectural Benchmarks */}
+        <section id="benchmarks" className="py-16 px-4 bg-cosmic-950 border-t border-slate-800/80">
           <div className="max-w-4xl mx-auto">
             <div className="text-center mb-12">
-              <h2 className="text-2xl md:text-3xl font-bold text-white mb-3">SafeMetrics vs Google Analytics 4 (GA4)</h2>
-              <p className="text-sm text-slate-400">Why thousands of modern builders are abandoning GA4.</p>
+              <h2 className="text-2xl md:text-3xl font-bold text-white mb-3">Architectural Comparison vs GA4</h2>
+              <p className="text-sm text-slate-400">Why privacy-focused engineers and high-converting storefronts ditch GA4.</p>
             </div>
 
-            <div className="overflow-x-auto">
+            <div className="glass-card rounded-2xl overflow-hidden shadow-2xl">
               <table className="w-full text-xs text-left border-collapse">
                 <thead>
-                  <tr className="border-b border-slate-800 text-slate-400">
-                    <th className="py-3 px-4 font-semibold">Feature / Metric</th>
-                    <th className="py-3 px-4 font-bold text-emerald-400 bg-emerald-950/20">SafeMetrics</th>
-                    <th className="py-3 px-4 font-semibold text-slate-400">Google Analytics 4 (GA4)</th>
+                  <tr className="border-b border-slate-800 text-slate-400 bg-cosmic-900/60">
+                    <th className="py-3.5 px-4 font-semibold">Criteria / Spec</th>
+                    <th className="py-3.5 px-4 font-bold text-cyan-400 bg-cyan-950/30">SafeMetrics SaaS</th>
+                    <th className="py-3.5 px-4 font-semibold text-slate-400">Google Analytics 4 (GA4)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-850">
                   <tr>
-                    <td className="py-3 px-4 font-medium text-slate-200">Cookie Banner Needed?</td>
-                    <td className="py-3 px-4 text-emerald-300 font-bold bg-emerald-950/20">❌ No (Zero Cookies)</td>
-                    <td className="py-3 px-4 text-rose-400">⚠️ Mandatory (EU/GDPR)</td>
+                    <td className="py-3.5 px-4 font-medium text-slate-200">Cookie Banner Needed?</td>
+                    <td className="py-3.5 px-4 text-emerald-300 font-bold bg-cyan-950/20">❌ Never (Zero Cookies)</td>
+                    <td className="py-3.5 px-4 text-rose-400">⚠️ Mandatory (EU/GDPR)</td>
                   </tr>
                   <tr>
-                    <td className="py-3 px-4 font-medium text-slate-200">Embed Script Size</td>
-                    <td className="py-3 px-4 text-emerald-300 font-bold bg-emerald-950/20">&lt; 1 KB (Ultra-fast)</td>
-                    <td className="py-3 px-4 text-rose-400">45+ KB (Slows LCP)</td>
+                    <td className="py-3.5 px-4 font-medium text-slate-200">Script Payload on Wire</td>
+                    <td className="py-3.5 px-4 text-cyan-300 font-mono font-bold bg-cyan-950/20">&lt; 0.8 KB (Instant)</td>
+                    <td className="py-3.5 px-4 text-rose-400 font-mono">45.2 KB + GTM (Slows LCP)</td>
                   </tr>
                   <tr>
-                    <td className="py-3 px-4 font-medium text-slate-200">Real-time Visibility</td>
-                    <td className="py-3 px-4 text-emerald-300 font-bold bg-emerald-950/20">⚡ Instant / Live</td>
-                    <td className="py-3 px-4 text-slate-400">24 to 48 Hour Delay</td>
+                    <td className="py-3.5 px-4 font-medium text-slate-200">Telemetry Ingestion Lag</td>
+                    <td className="py-3.5 px-4 text-cyan-300 font-bold bg-cyan-950/20">⚡ 12ms (Real-Time Live)</td>
+                    <td className="py-3.5 px-4 text-slate-400">24 to 48 Hour Processing Lag</td>
                   </tr>
                   <tr>
-                    <td className="py-3 px-4 font-medium text-slate-200">GDPR &amp; CCPA Compliant</td>
-                    <td className="py-3 px-4 text-emerald-300 font-bold bg-emerald-950/20">✅ 100% Compliant</td>
-                    <td className="py-3 px-4 text-rose-400">❌ Ruled illegal in Austria/France</td>
+                    <td className="py-3.5 px-4 font-medium text-slate-200">Regulatory Compliance</td>
+                    <td className="py-3.5 px-4 text-emerald-300 font-bold bg-cyan-950/20">✅ 100% GDPR, CCPA, PECR</td>
+                    <td className="py-3.5 px-4 text-rose-400">❌ Ruled non-compliant in EU</td>
                   </tr>
                   <tr>
-                    <td className="py-3 px-4 font-medium text-slate-200">Data Ownership</td>
-                    <td className="py-3 px-4 text-emerald-300 font-bold bg-emerald-950/20">🔒 You own 100%</td>
-                    <td className="py-3 px-4 text-slate-400">Mined for Google Ads</td>
+                    <td className="py-3.5 px-4 font-medium text-slate-200">Data Monetization</td>
+                    <td className="py-3.5 px-4 text-cyan-300 font-bold bg-cyan-950/20">🔒 0% (You own your data)</td>
+                    <td className="py-3.5 px-4 text-slate-400">Indexed for Google Ads</td>
                   </tr>
                 </tbody>
               </table>
@@ -328,61 +646,64 @@ export default function App() {
           </div>
         </section>
 
-        {/* 1-Click Embed Generator */}
-        <section id="embed" className="py-16 px-4 bg-slate-900/40 border-t border-slate-800/80">
-          <div className="max-w-3xl mx-auto">
-            <div className="text-center mb-8">
-              <h2 className="text-2xl md:text-3xl font-bold text-white mb-2">1-Click Simple Installation</h2>
-              <p className="text-sm text-slate-400">Add one single line of code to your HTML or framework.</p>
-            </div>
+        {/* Speed & Environmental Calculator */}
+        <section id="calculator" className="py-16 px-4 bg-cosmic-900/40 border-t border-slate-800/80">
+          <div className="max-w-3xl mx-auto text-center">
+            <h2 className="text-2xl md:text-3xl font-bold text-white mb-2">Speed &amp; Carbon Savings Calculator</h2>
+            <p className="text-sm text-slate-400 mb-8">See how much client data transfer you eliminate by replacing GA4 with SafeMetrics.</p>
 
-            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-6 shadow-xl">
-              <label className="block text-xs font-semibold text-slate-300 mb-2">Your Website Domain</label>
-              <input
-                type="text"
-                value={domainInput}
-                onChange={e => setDomainInput(e.target.value)}
-                placeholder="example.com"
-                className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-emerald-500 mb-4"
-              />
+            <div className="glass-card rounded-2xl p-6 md:p-8 text-left">
+              <div className="mb-6">
+                <div className="flex justify-between text-xs font-mono mb-2">
+                  <span className="text-slate-300">Monthly Pageviews:</span>
+                  <span className="text-cyan-400 font-bold">{calcViews.toLocaleString()} views</span>
+                </div>
+                <input
+                  type="range"
+                  min="10000"
+                  max="1000000"
+                  step="10000"
+                  value={calcViews}
+                  onChange={e => setCalcViews(Number(e.target.value))}
+                  className="w-full accent-cyan-400 cursor-pointer"
+                />
+              </div>
 
-              <div className="relative">
-                <pre className="bg-slate-900 border border-slate-800 rounded-lg p-4 font-mono text-xs text-emerald-300 overflow-x-auto">
-                  {snippet}
-                </pre>
-                <button
-                  onClick={handleCopySnippet}
-                  className="absolute top-2.5 right-2.5 px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1 transition shadow"
-                >
-                  {copiedSnippet ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copiedSnippet ? 'Copied!' : 'Copy Code'}</span>
-                </button>
+              <div className="grid grid-cols-2 gap-4 text-center">
+                <div className="p-4 rounded-xl bg-cosmic-950 border border-slate-800">
+                  <div className="text-3xl font-extrabold text-cyan-400 mb-1">{mbSavedMonthly} MB</div>
+                  <div className="text-xs text-slate-400">Bandwidth Saved / Month</div>
+                </div>
+                <div className="p-4 rounded-xl bg-cosmic-950 border border-slate-800">
+                  <div className="text-3xl font-extrabold text-emerald-400 mb-1">{hoursSaved} hrs</div>
+                  <div className="text-xs text-slate-400">Visitor Waiting Time Eliminated</div>
+                </div>
               </div>
             </div>
           </div>
         </section>
 
-        {/* Pricing Section */}
-        <section id="pricing" className="py-16 px-4 bg-slate-950 border-t border-slate-900">
+        {/* SaaS Pricing Section */}
+        <section id="pricing" className="py-16 px-4 bg-cosmic-950 border-t border-slate-800/80">
           <div className="max-w-5xl mx-auto">
             <div className="text-center mb-10">
               <h2 className="text-3xl font-bold text-white mb-3">Honest, Predictable SaaS Pricing</h2>
-              <p className="text-sm text-slate-400">No surprise charges. Upgrade or downgrade anytime.</p>
+              <p className="text-sm text-slate-400">Scale seamlessly from side projects to enterprise clusters.</p>
 
-              {/* Toggle */}
-              <div className="inline-flex items-center gap-2 p-1 bg-slate-900 border border-slate-800 rounded-xl mt-6">
+              {/* Billing Toggle */}
+              <div className="inline-flex items-center gap-2 p-1 bg-cosmic-900 border border-slate-800 rounded-xl mt-6">
                 <button
                   onClick={() => setBillingCycle('monthly')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                    billingCycle === 'monthly' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition ${
+                    billingCycle === 'monthly' ? 'bg-cyan-500 text-cosmic-950 font-bold' : 'text-slate-400 hover:text-white'
                   }`}
                 >
                   Monthly
                 </button>
                 <button
                   onClick={() => setBillingCycle('annual')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1 ${
-                    billingCycle === 'annual' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1 ${
+                    billingCycle === 'annual' ? 'bg-cyan-500 text-cosmic-950 font-bold' : 'text-slate-400 hover:text-white'
                   }`}
                 >
                   <span>Annual</span>
@@ -392,80 +713,80 @@ export default function App() {
             </div>
 
             <div className="grid md:grid-cols-3 gap-6 max-w-4xl mx-auto">
-              {/* Starter */}
-              <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 flex flex-col justify-between">
+              {/* Hobby */}
+              <div className="p-6 rounded-2xl bg-cosmic-900/60 border border-slate-800 flex flex-col justify-between">
                 <div>
-                  <h3 className="text-lg font-bold text-white mb-1">Starter</h3>
-                  <p className="text-xs text-slate-400 mb-4">For hobbyists &amp; side projects</p>
+                  <h3 className="text-lg font-bold text-white mb-1">Indie Hobby</h3>
+                  <p className="text-xs text-slate-400 mb-4">For makers &amp; side projects</p>
                   <div className="text-3xl font-extrabold text-white mb-6">$0</div>
 
                   <ul className="space-y-2.5 text-xs text-slate-300">
                     <li className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Up to 3 websites
+                      <CheckCircle2 className="w-4 h-4 text-cyan-400" /> Up to 3 websites
                     </li>
                     <li className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400" /> 10,000 monthly events
+                      <CheckCircle2 className="w-4 h-4 text-cyan-400" /> 10,000 monthly events
                     </li>
                     <li className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400" /> 100% cookie-free
+                      <CheckCircle2 className="w-4 h-4 text-cyan-400" /> Zero cookies / Zero banners
                     </li>
                     <li className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400" /> 30-day data retention
+                      <CheckCircle2 className="w-4 h-4 text-cyan-400" /> 30-day data retention
                     </li>
                   </ul>
                 </div>
 
                 <a
-                  href="#embed"
-                  className="mt-6 block w-full text-center py-2 px-4 rounded-lg bg-slate-900 border border-slate-800 text-xs font-semibold text-white hover:bg-slate-800 transition"
+                  href="#install"
+                  className="mt-6 block w-full text-center py-2 px-4 rounded-lg bg-cosmic-950 border border-slate-800 text-xs font-semibold text-white hover:bg-slate-850 transition"
                 >
-                  Start Free
+                  Get Started Free
                 </a>
               </div>
 
-              {/* Growth */}
-              <div className="p-6 rounded-2xl bg-gradient-to-b from-emerald-950/80 to-slate-950 border-2 border-emerald-500/60 shadow-xl shadow-emerald-500/10 flex flex-col justify-between relative">
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 text-[10px] font-bold text-white uppercase tracking-wider">
-                  Recommended
+              {/* Pro Growth (Hero Tier) */}
+              <div className="p-6 rounded-2xl bg-gradient-to-b from-cyan-950/50 to-cosmic-950 border-2 border-cyan-500/60 shadow-glow-cyan flex flex-col justify-between relative">
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-gradient-to-r from-cyan-500 to-indigo-600 text-[10px] font-bold text-white uppercase tracking-wider">
+                  Most Popular
                 </div>
 
                 <div>
-                  <h3 className="text-lg font-bold text-white mb-1">Growth Pro</h3>
-                  <p className="text-xs text-slate-400 mb-4">For startups &amp; growing SaaS</p>
+                  <h3 className="text-lg font-bold text-white mb-1">Pro Growth</h3>
+                  <p className="text-xs text-slate-400 mb-4">For founders &amp; growing SaaS</p>
                   <div className="text-3xl font-extrabold text-white mb-6">
-                    {billingCycle === 'monthly' ? '$9' : '$7.50'}
+                    {billingCycle === 'monthly' ? '$9' : '$7'}
                     <span className="text-xs font-normal text-slate-400">/mo</span>
                   </div>
 
                   <ul className="space-y-2.5 text-xs text-slate-300">
                     <li className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Unlimited websites
+                      <CheckCircle2 className="w-4 h-4 text-cyan-400" /> Unlimited websites &amp; subdomains
                     </li>
                     <li className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400" /> 100,000 monthly events
+                      <CheckCircle2 className="w-4 h-4 text-cyan-400" /> 150,000 monthly events
                     </li>
                     <li className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Custom domain tracking proxy
+                      <CheckCircle2 className="w-4 h-4 text-cyan-400" /> Custom domain proxying
                     </li>
                     <li className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Weekly email summary digests
+                      <CheckCircle2 className="w-4 h-4 text-cyan-400" /> Weekly executive email digests
                     </li>
                     <li className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400" /> 2-year data retention
+                      <CheckCircle2 className="w-4 h-4 text-cyan-400" /> 2-year data retention
                     </li>
                   </ul>
                 </div>
 
                 <button
                   onClick={() => alert('Stripe checkout integration active.')}
-                  className="mt-6 block w-full text-center py-2 px-4 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 text-xs font-semibold text-white hover:from-emerald-500 hover:to-teal-500 shadow-md shadow-emerald-600/30 transition"
+                  className="mt-6 block w-full text-center py-2 px-4 rounded-lg bg-gradient-to-r from-cyan-500 to-indigo-600 text-xs font-bold text-white hover:from-cyan-400 hover:to-indigo-500 shadow-glow-cyan transition"
                 >
                   Start 14-Day Free Trial
                 </button>
               </div>
 
-              {/* Business */}
-              <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 flex flex-col justify-between">
+              {/* Scale Business */}
+              <div className="p-6 rounded-2xl bg-cosmic-900/60 border border-slate-800 flex flex-col justify-between">
                 <div>
                   <h3 className="text-lg font-bold text-white mb-1">Scale Business</h3>
                   <p className="text-xs text-slate-400 mb-4">For agencies &amp; high-traffic brands</p>
@@ -476,23 +797,23 @@ export default function App() {
 
                   <ul className="space-y-2.5 text-xs text-slate-300">
                     <li className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400" /> 1,000,000 monthly events
+                      <CheckCircle2 className="w-4 h-4 text-cyan-400" /> 1,500,000 monthly events
                     </li>
                     <li className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Multi-user team permissions
+                      <CheckCircle2 className="w-4 h-4 text-cyan-400" /> Multi-user team RBAC permissions
                     </li>
                     <li className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Full REST API &amp; Webhooks
+                      <CheckCircle2 className="w-4 h-4 text-cyan-400" /> Full REST API &amp; Webhook triggers
                     </li>
                     <li className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Unlimited data retention
+                      <CheckCircle2 className="w-4 h-4 text-cyan-400" /> Unlimited data retention
                     </li>
                   </ul>
                 </div>
 
                 <button
                   onClick={() => alert('Contact sales for custom plans.')}
-                  className="mt-6 block w-full text-center py-2 px-4 rounded-lg bg-slate-900 border border-slate-800 text-xs font-semibold text-white hover:bg-slate-800 transition"
+                  className="mt-6 block w-full text-center py-2 px-4 rounded-lg bg-cosmic-950 border border-slate-800 text-xs font-semibold text-white hover:bg-slate-850 transition"
                 >
                   Contact Sales
                 </button>
@@ -503,8 +824,15 @@ export default function App() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-slate-900 bg-slate-950 py-8 px-4 text-center text-xs text-slate-500">
-        <p>&copy; {new Date().getFullYear()} SafeMetrics SaaS &bull; All rights reserved &bull; 100% GDPR, CCPA &amp; PECR Compliant.</p>
+      <footer className="border-t border-slate-850 bg-cosmic-950 py-10 px-4 text-center text-xs text-slate-500">
+        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-2 text-slate-400">
+            <Shield className="w-4 h-4 text-cyan-400" />
+            <span className="font-semibold text-white">SafeMetrics</span>
+            <span>&bull; Zero-Telemetry Traffic Intelligence</span>
+          </div>
+          <p>&copy; {new Date().getFullYear()} SafeMetrics SaaS &bull; 100% GDPR, CCPA &amp; PECR Certified &bull; Zero Cookies.</p>
+        </div>
       </footer>
     </div>
   );
