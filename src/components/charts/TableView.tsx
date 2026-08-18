@@ -59,7 +59,7 @@ export function ChartFrame({
   children: ReactNode
 }) {
   return (
-    <section className="rounded-xl border border-slate-800 bg-slate-900 p-4 sm:p-5">
+    <section className="glass-card rounded-xl p-4 sm:p-5">
       <header className="mb-4 flex items-start justify-between gap-4">
         <div>
           <h3 className="text-sm font-semibold text-slate-100">{title}</h3>
@@ -78,7 +78,7 @@ export function ViewToggle({ table, onChange }: { table: boolean; onChange: (nex
       type="button"
       onClick={() => onChange(!table)}
       aria-pressed={table}
-      className="shrink-0 rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-300 transition hover:border-slate-500 hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+      className="shrink-0 rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-300 transition hover:border-slate-500 hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
     >
       {table ? 'Chart' : 'Table'}
     </button>

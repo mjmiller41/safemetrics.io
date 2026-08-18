@@ -103,7 +103,7 @@ export function TimeSeries({ buckets, hourly, title, subtitle }: Props) {
             role="img"
             aria-label={`${title}. Use the table view for exact values.`}
             tabIndex={0}
-            className="touch-pan-y focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+            className="touch-pan-y focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
             onPointerMove={(e) => pick(e.clientX, e.currentTarget)}
             onPointerLeave={() => setActive(null)}
             onFocus={() => setActive((prev) => prev ?? buckets.length - 1)}

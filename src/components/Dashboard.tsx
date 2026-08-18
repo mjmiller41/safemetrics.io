@@ -24,13 +24,13 @@ export function Dashboard({ live = true }: { live?: boolean }) {
     <div className="space-y-4">
       {/* One filter row, above everything it scopes. Date range first. */}
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-900 px-3 py-1.5 text-sm text-slate-300">
-          <span className="h-2 w-2 rounded-full bg-brand-400" aria-hidden="true" />
+        <div className="flex items-center gap-2 glass-card rounded-lg px-3 py-1.5 text-sm text-slate-300">
+          <span className="h-2 w-2 rounded-full bg-cyan-400" aria-hidden="true" />
           demo.safemetrics.io
         </div>
 
         <div
-          className="flex rounded-lg border border-slate-800 bg-slate-900 p-0.5"
+          className="flex glass-card rounded-lg p-0.5"
           role="group"
           aria-label="Date range"
         >
@@ -41,7 +41,7 @@ export function Dashboard({ live = true }: { live?: boolean }) {
               onClick={() => setRange(option.id)}
               aria-pressed={range === option.id}
               title={option.label}
-              className={`rounded-md px-3 py-1 text-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 ${
+              className={`rounded-md px-3 py-1 text-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ${
                 range === option.id
                   ? 'bg-slate-800 text-slate-50'
                   : 'text-slate-400 hover:text-slate-200'
@@ -53,7 +53,7 @@ export function Dashboard({ live = true }: { live?: boolean }) {
         </div>
 
         {live && (
-          <div className="ml-auto flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-900 px-3 py-1.5 text-sm">
+          <div className="ml-auto flex items-center gap-2 glass-card rounded-lg px-3 py-1.5 text-sm">
             <span className="relative flex h-2 w-2" aria-hidden="true">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
@@ -66,7 +66,7 @@ export function Dashboard({ live = true }: { live?: boolean }) {
 
       {/* Hero figure — exactly one per view — plus its supporting tiles. */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-xl border border-slate-800 bg-slate-900 p-4 sm:col-span-2 lg:col-span-1">
+        <div className="glass-card rounded-xl p-4 sm:col-span-2 lg:col-span-1">
           <p className="text-xs font-medium text-slate-400">Unique visitors</p>
           <p className="mt-1 text-5xl font-semibold leading-none text-slate-50">
             {compact(data.totals.visitors)}
@@ -111,7 +111,7 @@ export function Dashboard({ live = true }: { live?: boolean }) {
       </div>
 
       {live && (
-        <section className="rounded-xl border border-slate-800 bg-slate-900 p-4 sm:p-5">
+        <section className="glass-card rounded-xl p-4 sm:p-5">
           <header className="mb-3 flex items-baseline justify-between gap-4">
             <h3 className="text-sm font-semibold text-slate-100">Live pageviews</h3>
             <p className="text-xs text-slate-500">Everything SafeMetrics stores about a visit</p>

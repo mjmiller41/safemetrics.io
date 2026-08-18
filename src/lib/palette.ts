@@ -1,12 +1,12 @@
 /**
  * Chart palette.
  *
- * Validated for the dark chart surface (#0f172a / slate-900) with the dataviz
+ * Validated for the dark glass-card surface (#0c121f) with the dataviz
  * validator: lightness band PASS, chroma floor PASS, worst adjacent CVD ΔE 32.4
  * (tritan) PASS, contrast vs surface PASS.
  *
  *   node scripts/validate_palette.js "#199e70,#9085e9,#c98500,#3987e5,#d95926" \
- *     --mode dark --surface "#0f172a"
+ *     --mode dark --surface "#0c121f"
  *
  * Slots are assigned in fixed order and never cycled — colour follows the
  * entity, not its current rank.
@@ -20,10 +20,10 @@ export const SERIES = [
 ] as const
 
 /** The surface colour charts are painted on — used for gaps and rings. */
-export const SURFACE = '#0f172a'
+export const SURFACE = '#0c121f'
 
 /** One step off the surface: gridlines and axis rules. Hairline, solid. */
-export const GRID = '#1e293b'
+export const GRID = '#1e2942'
 
 /** De-emphasised mark colour, for sparkline history behind the current period. */
 export const MUTED_MARK = '#475569'

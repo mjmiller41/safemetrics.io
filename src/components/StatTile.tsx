@@ -25,7 +25,7 @@ export function StatTile({
   const good = delta === undefined || delta === 0 ? null : positive === goodWhenUp
 
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
+    <div className="glass-card rounded-xl p-4">
       <p className="text-xs font-medium text-slate-400">{label}</p>
       <div className="mt-1.5 flex items-end justify-between gap-3">
         <div>
