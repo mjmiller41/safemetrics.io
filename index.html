@@ -7,15 +7,31 @@
     <meta name="description" content="Simple, lightweight (<1KB), privacy-friendly Google Analytics alternative. Zero cookie banners, 100% GDPR compliant, real-time insights." />
     <link rel="canonical" href="https://safemetrics.io/" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    
+    <link rel="alternate icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="theme-color" content="#020617" />
+
     <!-- OpenGraph & Social -->
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://safemetrics.io/" />
+    <meta property="og:site_name" content="SafeMetrics" />
     <meta property="og:title" content="SafeMetrics — Privacy-First, Cookie-Free Web Analytics" />
     <meta property="og:description" content="A lightweight, privacy-respecting analytics platform. Understand visitor traffic without cookies, tracking IP addresses, or selling data." />
-    <meta name="twitter:card" content="summary_large_image" />
+    <meta property="og:image" content="https://safemetrics.io/og.png" />
+    <meta property="og:image:secure_url" content="https://safemetrics.io/og.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="SafeMetrics — privacy-first, cookie-free web analytics" />
 
-    <!-- Schema.org SoftwareApplication JSON-LD -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:url" content="https://safemetrics.io/" />
+    <meta name="twitter:title" content="SafeMetrics — Privacy-First, Cookie-Free Web Analytics" />
+    <meta name="twitter:description" content="A lightweight, privacy-respecting analytics platform. Understand visitor traffic without cookies, tracking IP addresses, or selling data." />
+    <meta name="twitter:image" content="https://safemetrics.io/og.png" />
+    <meta name="twitter:image:alt" content="SafeMetrics — privacy-first, cookie-free web analytics" />
+
+    <!-- Schema.org SoftwareApplication + Organization JSON-LD -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -28,6 +44,8 @@
           "operatingSystem": "All Web Browsers",
           "url": "https://safemetrics.io",
           "description": "Cookie-free, privacy-preserving Google Analytics alternative with real-time dashboards and GDPR compliance.",
+          "image": "https://safemetrics.io/og.png",
+          "publisher": { "@id": "https://safemetrics.io/#org" },
           "offers": {
             "@type": "Offer",
             "price": "0",
@@ -38,7 +56,8 @@
           "@type": "Organization",
           "@id": "https://safemetrics.io/#org",
           "name": "SafeMetrics",
-          "url": "https://safemetrics.io"
+          "url": "https://safemetrics.io",
+          "logo": "https://safemetrics.io/logo.png"
         }
       ]
     }
