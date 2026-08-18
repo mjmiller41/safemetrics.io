@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en" class="scroll-smooth">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SafeMetrics — Privacy-First, Cookie-Free Web Analytics</title>
+    <meta name="description" content="Simple, lightweight (<1KB), privacy-friendly Google Analytics alternative. Zero cookie banners, 100% GDPR compliant, real-time insights." />
+    <link rel="canonical" href="https://safemetrics.io/" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    
+    <!-- OpenGraph & Social -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://safemetrics.io/" />
+    <meta property="og:title" content="SafeMetrics — Privacy-First, Cookie-Free Web Analytics" />
+    <meta property="og:description" content="A lightweight, privacy-respecting analytics platform. Understand visitor traffic without cookies, tracking IP addresses, or selling data." />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <!-- Schema.org SoftwareApplication JSON-LD -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "SoftwareApplication",
+          "@id": "https://safemetrics.io/#app",
+          "name": "SafeMetrics",
+          "applicationCategory": "AnalyticsApplication",
+          "operatingSystem": "All Web Browsers",
+          "url": "https://safemetrics.io",
+          "description": "Cookie-free, privacy-preserving Google Analytics alternative with real-time dashboards and GDPR compliance.",
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD"
+          }
+        },
+        {
+          "@type": "Organization",
+          "@id": "https://safemetrics.io/#org",
+          "name": "SafeMetrics",
+          "url": "https://safemetrics.io"
+        }
+      ]
+    }
+    </script>
+  </head>
+  <body class="bg-slate-950 text-slate-50 antialiased selection:bg-emerald-500 selection:text-white">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

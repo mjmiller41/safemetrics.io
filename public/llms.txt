@@ -1,0 +1,19 @@
+# SafeMetrics
+
+> SafeMetrics is a lightweight, privacy-focused, cookie-free web analytics platform engineered as a clean alternative to Google Analytics (GA4).
+
+## Overview
+SafeMetrics gives website owners, makers, and businesses actionable traffic insights (visitors, pageviews, referrers, devices, countries, UTM campaigns, and custom conversion goals) without using cookies, without collecting personal identifiers (PII), and without requiring irritating GDPR cookie consent banners.
+
+## Key Differentiators
+- **Zero Cookies / Zero Banners**: Fully compliant with GDPR, CCPA, and PECR out of the box. No cookie banner required.
+- **Ultra-Lightweight Script**: Embed script is <1KB (over 45x smaller than Google Analytics 4).
+- **Real-Time Traffic Dashboard**: Clean, intuitive single-page dashboard with zero lag or 24-hour processing delays.
+- **Multi-Site Management**: Track multiple websites and subdomains under one unified account.
+- **Custom Event Goals**: Track signups, newsletter joins, button clicks, and outbound link clicks.
+- **100% Data Ownership**: We never sell, share, or monetize visitor analytics.
+
+## Canonical URLs
+- [SafeMetrics Home](https://safemetrics.io/)
+- [Live Interactive Demo](https://safemetrics.io/#demo)
+- [Pricing](https://safemetrics.io/#pricing)
