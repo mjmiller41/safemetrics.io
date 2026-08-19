@@ -1,6 +1,12 @@
+import { handleStripeWebhookRequest } from './stripe-webhook.ts';
+
 export interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
+  /** Stripe API key. Set with `wrangler secret put STRIPE_SECRET_KEY`. */
+  STRIPE_SECRET_KEY?: string;
+  /** Endpoint signing secret. Set with `wrangler secret put STRIPE_WEBHOOK_SECRET`. */
+  STRIPE_WEBHOOK_SECRET?: string;
 }
 
 export default {
@@ -178,7 +184,16 @@ export default {
           });
         }
 
-        const stripeKey = env.STRIPE_SECRET_KEY || 'sk_live_REDACTED_ROTATE_THIS_KEY';
+        // Never fall back to a literal key here — a hardcoded secret ships inside the
+        // deployed worker bundle. Set it with `wrangler secret put STRIPE_SECRET_KEY`.
+        const stripeKey = env.STRIPE_SECRET_KEY;
+        if (!stripeKey) {
+          console.error('[checkout] STRIPE_SECRET_KEY is not configured');
+          return new Response(JSON.stringify({ error: 'Billing is not configured' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders }
+          });
+        }
         const origin = url.origin;
 
         const params = new URLSearchParams();
@@ -221,35 +236,12 @@ export default {
     }
 
     // 4. Stripe Webhook Listener: POST /api/webhook
+    //
+    // Signature verification, idempotency, and tier sync all live in
+    // worker/stripe-webhook.ts. Note that CORS headers are deliberately not applied:
+    // this endpoint is server-to-server only and must never be callable from a page.
     if (url.pathname === '/api/webhook' && request.method === 'POST') {
-      try {
-        const bodyText = await request.text();
-        const event = JSON.parse(bodyText || '{}');
-
-        if (event.type === 'checkout.session.completed') {
-          const session = event.data?.object;
-          const planId = session?.metadata?.planId || 'pro';
-          const customerEmail = session?.customer_email || session?.customer_details?.email;
-          const tenantId = session?.client_reference_id || 'tenant_default';
-
-          // Update tenant plan in D1
-          if (env.DB) {
-            await env.DB.prepare(
-              'UPDATE tenants SET plan = ? WHERE id = ?'
-            ).bind(planId, tenantId).run();
-          }
-        }
-
-        return new Response(JSON.stringify({ received: true }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' }
-        });
-      } catch (err: any) {
-        return new Response(JSON.stringify({ error: err.message }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' }
-        });
-      }
+      return handleStripeWebhookRequest(request, env);
     }
 
     // 5. Fallback: Serve static SPA frontend from Cloudflare Pages / Assets
