@@ -164,7 +164,95 @@ export default {
       }
     }
 
-    // 3. Fallback: Serve static SPA frontend from Cloudflare Pages / Assets
+    // 3. Stripe Checkout Session Endpoint: POST /api/checkout
+    if (url.pathname === '/api/checkout' && request.method === 'POST') {
+      try {
+        const bodyText = await request.text();
+        const payload = JSON.parse(bodyText || '{}');
+        const { priceId, planId, successUrl, cancelUrl, userEmail, userId } = payload;
+
+        if (!priceId) {
+          return new Response(JSON.stringify({ error: 'Missing priceId' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders }
+          });
+        }
+
+        const stripeKey = env.STRIPE_SECRET_KEY || 'sk_live_REDACTED_ROTATE_THIS_KEY';
+        const origin = url.origin;
+
+        const params = new URLSearchParams();
+        params.append('mode', 'subscription');
+        params.append('line_items[0][price]', priceId);
+        params.append('line_items[0][quantity]', '1');
+        params.append('success_url', successUrl || `${origin}/?checkout=success&plan=${planId || 'pro'}`);
+        params.append('cancel_url', cancelUrl || `${origin}/?checkout=cancel`);
+        if (userEmail) params.append('customer_email', userEmail);
+        if (userId) params.append('client_reference_id', userId);
+        params.append('metadata[planId]', planId || 'pro');
+
+        const stripeRes = await fetch('https://api.stripe.com/v1/checkout/sessions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${stripeKey}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: params.toString(),
+        });
+
+        const data: any = await stripeRes.json();
+        if (!stripeRes.ok || !data.url) {
+          return new Response(JSON.stringify({ error: data.error?.message || 'Failed to create Stripe checkout session' }), {
+            status: stripeRes.status,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders }
+          });
+        }
+
+        return new Response(JSON.stringify({ url: data.url, id: data.id }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders }
+        });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders }
+        });
+      }
+    }
+
+    // 4. Stripe Webhook Listener: POST /api/webhook
+    if (url.pathname === '/api/webhook' && request.method === 'POST') {
+      try {
+        const bodyText = await request.text();
+        const event = JSON.parse(bodyText || '{}');
+
+        if (event.type === 'checkout.session.completed') {
+          const session = event.data?.object;
+          const planId = session?.metadata?.planId || 'pro';
+          const customerEmail = session?.customer_email || session?.customer_details?.email;
+          const tenantId = session?.client_reference_id || 'tenant_default';
+
+          // Update tenant plan in D1
+          if (env.DB) {
+            await env.DB.prepare(
+              'UPDATE tenants SET plan = ? WHERE id = ?'
+            ).bind(planId, tenantId).run();
+          }
+        }
+
+        return new Response(JSON.stringify({ received: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
+    // 5. Fallback: Serve static SPA frontend from Cloudflare Pages / Assets
     return env.ASSETS.fetch(request);
   }
 };
