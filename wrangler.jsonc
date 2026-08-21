@@ -4,11 +4,13 @@
   "main": "worker/index.ts",
   "compatibility_date": "2026-08-18",
   "compatibility_flags": ["nodejs_compat"],
+  // The built SPA is served straight from the edge and does NOT count against
+  // the Worker request limit. `run_worker_first` sends only /api/* to our code.
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": true
+    "run_worker_first": ["/api/*"]
   },
   "d1_databases": [
     {
@@ -16,5 +18,12 @@
       "database_name": "safemetrics-db",
       "database_id": "a21dff63-dc96-49b3-8d5a-b62353dcbfbc"
     }
-  ]
+  ],
+
+  // Binds the Worker to the apex domain from version control rather than the
+  // dashboard. Without this the custom domain has to be attached by hand, which
+  // is how safemetrics.io ended up served by a stale Pages project instead.
+  "routes": [{ "pattern": "safemetrics.io", "custom_domain": true }],
+
+  "observability": { "enabled": true }
 }
