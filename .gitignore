@@ -2,3 +2,8 @@ node_modules/
 dist/
 .DS_Store
 *.local
+
+# Local wrangler state and secrets. .dev.vars holds real Stripe keys when
+# testing the worker locally and must never be committed.
+.wrangler/
+.dev.vars

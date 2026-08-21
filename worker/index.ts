@@ -1,6 +1,12 @@
+import { handleStripeWebhookRequest } from './stripe-webhook.ts';
+
 export interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
+  /** Stripe API key. Set with `wrangler secret put STRIPE_SECRET_KEY`. */
+  STRIPE_SECRET_KEY?: string;
+  /** Endpoint signing secret. Set with `wrangler secret put STRIPE_WEBHOOK_SECRET`. */
+  STRIPE_WEBHOOK_SECRET?: string;
 }
 
 export default {
@@ -164,7 +170,81 @@ export default {
       }
     }
 
-    // 3. Fallback: Serve static SPA frontend from Cloudflare Pages / Assets
+    // 3. Stripe Checkout Session Endpoint: POST /api/checkout
+    if (url.pathname === '/api/checkout' && request.method === 'POST') {
+      try {
+        const bodyText = await request.text();
+        const payload = JSON.parse(bodyText || '{}');
+        const { priceId, planId, successUrl, cancelUrl, userEmail, userId } = payload;
+
+        if (!priceId) {
+          return new Response(JSON.stringify({ error: 'Missing priceId' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders }
+          });
+        }
+
+        // Never fall back to a literal key here — a hardcoded secret ships inside the
+        // deployed worker bundle. Set it with `wrangler secret put STRIPE_SECRET_KEY`.
+        const stripeKey = env.STRIPE_SECRET_KEY;
+        if (!stripeKey) {
+          console.error('[checkout] STRIPE_SECRET_KEY is not configured');
+          return new Response(JSON.stringify({ error: 'Billing is not configured' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders }
+          });
+        }
+        const origin = url.origin;
+
+        const params = new URLSearchParams();
+        params.append('mode', 'subscription');
+        params.append('line_items[0][price]', priceId);
+        params.append('line_items[0][quantity]', '1');
+        params.append('success_url', successUrl || `${origin}/?checkout=success&plan=${planId || 'pro'}`);
+        params.append('cancel_url', cancelUrl || `${origin}/?checkout=cancel`);
+        if (userEmail) params.append('customer_email', userEmail);
+        if (userId) params.append('client_reference_id', userId);
+        params.append('metadata[planId]', planId || 'pro');
+
+        const stripeRes = await fetch('https://api.stripe.com/v1/checkout/sessions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${stripeKey}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: params.toString(),
+        });
+
+        const data: any = await stripeRes.json();
+        if (!stripeRes.ok || !data.url) {
+          return new Response(JSON.stringify({ error: data.error?.message || 'Failed to create Stripe checkout session' }), {
+            status: stripeRes.status,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders }
+          });
+        }
+
+        return new Response(JSON.stringify({ url: data.url, id: data.id }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders }
+        });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders }
+        });
+      }
+    }
+
+    // 4. Stripe Webhook Listener: POST /api/webhook
+    //
+    // Signature verification, idempotency, and tier sync all live in
+    // worker/stripe-webhook.ts. Note that CORS headers are deliberately not applied:
+    // this endpoint is server-to-server only and must never be callable from a page.
+    if (url.pathname === '/api/webhook' && request.method === 'POST') {
+      return handleStripeWebhookRequest(request, env);
+    }
+
+    // 5. Fallback: Serve static SPA frontend from Cloudflare Pages / Assets
     return env.ASSETS.fetch(request);
   }
 };
