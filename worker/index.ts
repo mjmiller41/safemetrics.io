@@ -18,6 +18,32 @@ export default {
       return new Response(null, { headers: corsHeaders });
     }
 
+    // 0. Health Endpoint: GET /api/health
+    // Unauthenticated liveness probe. Its only job is to prove the Worker is
+    // actually routed to this hostname -- if the custom domain binding is
+    // missing, this path falls through to the SPA and returns HTML instead.
+    if (url.pathname === '/api/health' && request.method === 'GET') {
+      let database = 'unbound';
+      if (env.DB) {
+        try {
+          await env.DB.prepare('SELECT 1').first();
+          database = 'ok';
+        } catch (err: any) {
+          database = `error: ${err.message}`;
+        }
+      }
+
+      return new Response(JSON.stringify({
+        ok: database === 'ok',
+        service: 'safemetrics-app',
+        worker: true,
+        database,
+      }), {
+        status: database === 'ok' ? 200 : 503,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders }
+      });
+    }
+
     // 1. Ingestion Endpoint: POST /api/event
     if (url.pathname === '/api/event' && request.method === 'POST') {
       try {
