@@ -10,7 +10,7 @@ SafeMetrics provides essential website traffic insights (unique visitors, pagevi
 ### 1. Universal HTML Embed
 Paste this single snippet into the `<head>` of your website:
 ```html
-<script defer src="https://safemetrics.io/beacon.js" data-domain="yourdomain.com"></script>
+<script defer src="https://safemetrics.io/js/script.js" data-domain="yourdomain.com"></script>
 ```
 
 ### 2. Next.js (App Router)
@@ -23,7 +23,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <Script
           defer
-          src="https://safemetrics.io/beacon.js"
+          src="https://safemetrics.io/js/script.js"
           data-domain="yourdomain.com"
           strategy="afterInteractive"
         />
@@ -37,7 +37,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 ### 3. React / Vite Single Page Application
 ```html
 <!-- Inside public/index.html -->
-<script defer src="https://safemetrics.io/beacon.js" data-domain="yourdomain.com"></script>
+<script defer src="https://safemetrics.io/js/script.js" data-domain="yourdomain.com"></script>
 ```
 
 ## Privacy & Cryptographic Architecture
@@ -65,7 +65,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 - **How is SafeMetrics different from Google Analytics 4 (GA4)?** SafeMetrics's embed script is under 1KB, versus 45KB+ for GA4, and loads with the `defer` attribute so it never blocks page rendering. It requires no cookie consent banner, never engages in cross-site ad profiling, and shows visitor data in real time instead of GA4's typical 24-48 hour processing delay.
 - **Is there a free tier?** Yes. The Starter plan is $0/month and includes up to 10,000 monthly pageviews, 1 tracked domain, and 30-day data retention.
 - **What does SafeMetrics cost?** SafeMetrics has three tiers: Starter is free (10,000 monthly pageviews, 1 domain, 30-day retention). Pro is $9/month or $90/year (100,000 monthly pageviews, 10 domains, custom event goals, unlimited data history). Scale is $29/month or $290/year (1,000,000 monthly pageviews, unlimited domains, team seats, raw CSV export).
-- **How do I embed SafeMetrics on my website?** Paste one script tag into the `<head>` of your site: `<script defer src="https://safemetrics.io/beacon.js" data-domain="yourdomain.com"></script>`. SafeMetrics's Integration Studio also generates ready-to-copy snippets for Next.js, HTML/Static sites, React + Vite, Astro, WordPress, and Laravel Blade.
+- **How do I embed SafeMetrics on my website?** Paste one script tag into the `<head>` of your site: `<script defer src="https://safemetrics.io/js/script.js" data-domain="yourdomain.com"></script>`. SafeMetrics's Integration Studio also generates ready-to-copy snippets for Next.js, HTML/Static sites, React + Vite, Astro, WordPress, and Laravel Blade.
 - **Is my visitor data private, and where is it hosted?** Yes. SafeMetrics uses no cookies, local storage, or persistent device fingerprinting. Unique visitors are calculated from an anonymized daily-rotating hash (SHA-256 of IP address + User-Agent + a daily salt) that resets at midnight UTC, so no cross-day tracking identifier ever exists. Data is processed on a Cloudflare D1 serverless SQL backend, and visitor data is never shared, sold, or joined with advertising networks.
 - **What does the live dashboard show?** The dashboard shows unique sessions, pageviews, bounce rate, and mean session dwell time at a glance, plus a visitor traffic trend chart and breakdown tabs for top pages, traffic sources, visitor geography, and goal conversions.
 - **How fast is setup?** Setup takes under 60 seconds: enter your domain and pick your framework in the Integration Studio, then copy and paste the generated one-line snippet into your site's `<head>`. No SDK installation or backend configuration is required.

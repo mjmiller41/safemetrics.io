@@ -121,6 +121,23 @@ export default function App({ hasClerk = false }: AppProps) {
   const [activePlan, setActivePlan] = useState<'free' | 'pro' | 'scale'>('free');
   const [checkoutToast, setCheckoutToast] = useState<string | null>(null);
 
+  // Simulate live incoming event stream
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const paths = ['/', '/categories/flea-market', '/pricing', '/ca/los-angeles', '/docs', '/login'];
+      const countries = ['US', 'DE', 'GB', 'CA', 'JP', 'FR', 'AU'];
+      const newPing = {
+        id: Date.now(),
+        path: paths[Math.floor(Math.random() * paths.length)],
+        country: countries[Math.floor(Math.random() * countries.length)],
+        time: 'Just now',
+        latency: `${Math.floor(Math.random() * 25 + 30)}ms`
+      };
+      setLivePings(prev => [newPing, ...prev.slice(0, 3)]);
+    }, 4500);
+    return () => clearInterval(interval);
+  }, []);
+
   // Check URL parameters for return from Stripe Checkout
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
