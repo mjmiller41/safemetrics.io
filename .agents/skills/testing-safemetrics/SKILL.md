@@ -31,16 +31,23 @@ npx wrangler d1 execute safemetrics-db --local --file=./migrations/0002_stripe_b
   Note `tenants.slug` is NOT NULL, so hand-inserted tenants need a slug.
 - `/api/health` must stay public.
 
-### Once Clerk auth lands (PR #5, branch `devin/1787845868-clerk-tenancy-auth`)
-The points below describe that branch, not `master` — on `master` there is no token verification
-and `/api/event` auto-registers any unknown domain under a shared `tenant_default`.
-- `CLERK_ISSUER` is committed empty in `wrangler.jsonc`, which makes authenticated endpoints
-  answer **503 (`not_configured`) instead of 401**. To reach the 401 branches, create a
-  gitignored `.dev.vars` with e.g. `CLERK_ISSUER=https://clerk.test.invalid` and
-  `SESSION_SALT=test-salt`. Never commit it. A garbage bearer token then yields
-  `401 {"error":"unauthorized","reason":"malformed_token"}`.
+### Clerk auth (on `master`)
+- `CLERK_ISSUER` is committed in `wrangler.jsonc`, pointing at a Clerk **development**
+  instance (`*.clerk.accounts.dev`), so authenticated endpoints reach the 401 branches
+  directly. A garbage bearer token yields
+  `401 {"error":"unauthorized","reason":"malformed_token"}` with no extra setup.
+- The two 503s are distinct and both mean "not the caller's fault": `not_configured` if
+  `CLERK_ISSUER` is blank, `jwks_unavailable` if a well-formed token arrives but the
+  issuer's `/.well-known/jwks.json` cannot be fetched — which is what you get offline.
+  Test 401s with a malformed token to stay clear of that.
+- A gitignored `.dev.vars` is still the place to override locally, e.g.
+  `CLERK_ISSUER=https://clerk.test.invalid` and `SESSION_SALT=test-salt`. Never commit it.
+  Unset, `SESSION_SALT` falls back to a literal in the bundle, so a local visitor hash
+  will not match a deployed one.
 - `/api/event` returns `202 {"ok":false,"reason":"domain_not_registered"}` for unknown domains
   (verify no rows are written), and `200 {"ok":true}` for a domain row you insert by hand.
+  Registering a domain is `POST /api/domains`, which is authenticated — hand-inserting the
+  row is how you test ingestion without a Clerk token.
 
 ## Devin Secrets Needed
 - `VITE_CLERK_PUBLISHABLE_KEY` and a matching `CLERK_ISSUER` (Clerk instance) — required for any
