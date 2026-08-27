@@ -25,18 +25,22 @@ description: How to run and test the SafeMetrics React/Vite SPA plus its Cloudfl
 npx wrangler dev --local --port 8787
 npx wrangler d1 execute safemetrics-db --local --file=./schema.sql
 npx wrangler d1 execute safemetrics-db --local --file=./migrations/0002_stripe_billing.sql
-# ...also 0003, 0004
+# ...and every other file in migrations/, in numeric order
 ```
 - Query state with `npx wrangler d1 execute safemetrics-db --local --json --command "SELECT ..."`.
   Note `tenants.slug` is NOT NULL, so hand-inserted tenants need a slug.
+- `/api/health` must stay public.
+
+### Once Clerk auth lands (PR #5, branch `devin/1787845868-clerk-tenancy-auth`)
+The points below describe that branch, not `master` — on `master` there is no token verification
+and `/api/event` auto-registers any unknown domain under a shared `tenant_default`.
 - `CLERK_ISSUER` is committed empty in `wrangler.jsonc`, which makes authenticated endpoints
   answer **503 (`not_configured`) instead of 401**. To reach the 401 branches, create a
   gitignored `.dev.vars` with e.g. `CLERK_ISSUER=https://clerk.test.invalid` and
   `SESSION_SALT=test-salt`. Never commit it. A garbage bearer token then yields
   `401 {"error":"unauthorized","reason":"malformed_token"}`.
-- `/api/health` must stay public. `/api/event` returns `202 {"ok":false,"reason":"domain_not_registered"}`
-  for unknown domains (verify no rows are written), and `200 {"ok":true}` for a domain row you
-  insert by hand.
+- `/api/event` returns `202 {"ok":false,"reason":"domain_not_registered"}` for unknown domains
+  (verify no rows are written), and `200 {"ok":true}` for a domain row you insert by hand.
 
 ## Devin Secrets Needed
 - `VITE_CLERK_PUBLISHABLE_KEY` and a matching `CLERK_ISSUER` (Clerk instance) — required for any
