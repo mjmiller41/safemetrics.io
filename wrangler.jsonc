@@ -16,7 +16,7 @@
   // var rather than a secret. While it is empty the worker rejects every
   // authenticated request with 503 instead of trusting unverified tokens.
   "vars": {
-    "CLERK_ISSUER": ""
+    "CLERK_ISSUER": "https://noted-civet-6994.clerk.accounts.dev"
   },
   "d1_databases": [
     {

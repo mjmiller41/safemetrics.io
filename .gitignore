@@ -7,3 +7,6 @@ dist/
 # testing the worker locally and must never be committed.
 .wrangler/
 .dev.vars
+.env
+.env.*
+!.env.example

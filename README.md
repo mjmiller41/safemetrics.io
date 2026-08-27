@@ -99,6 +99,6 @@ previously it filed them under a shared `tenant_default` on the `pro` plan.
 | Name | Where | Purpose |
 |---|---|---|
 | `CLERK_ISSUER` | `wrangler.jsonc` vars | Clerk Frontend API origin, e.g. `https://clerk.safemetrics.io`. Unset ⇒ authenticated endpoints answer 503. |
-| `VITE_CLERK_PUBLISHABLE_KEY` | build env | Without it the SPA renders signed-out and nobody can reach the API. |
+| `VITE_CLERK_PUBLISHABLE_KEY` | build env (`.env`, see `.env.example`) | Must belong to the same Clerk instance as `CLERK_ISSUER`. Without it the SPA renders signed-out and nobody can reach the API. |
 | `SESSION_SALT` | `wrangler secret put` | Salt for the daily visitor hash. Falls back to a literal, which makes the hash reversible for anyone with the source. |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | `wrangler secret put` | Checkout and webhook verification. |
