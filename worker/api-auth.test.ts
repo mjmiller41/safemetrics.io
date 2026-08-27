@@ -166,8 +166,24 @@ describe('GET /api/stats', () => {
     assert.equal(response.status, 200);
     assert.equal(body.domain, 'acme.test');
     assert.equal(body.tenantId, 'tenant_acme');
-    assert.equal(body.stats.total_views, 1);
-    assert.deepEqual(body.topPages, [{ url_path: '/pricing', views: 1 }]);
+    assert.equal(body.summary.pageviews, 1);
+    assert.equal(body.summary.visitors, 1);
+    assert.deepEqual(body.topPages, [{ name: '/pricing', views: 1, visitors: 1 }]);
+    assert.equal(body.timeframe, '7d', 'defaults to a week when none is asked for');
+  });
+
+  it('honours an explicit timeframe and rejects an invalid one', async () => {
+    const db = createTestDatabase();
+    await claimDomain(db as any, 'tenant_acme', 'acme.test');
+    const token = await signTestToken(key, { sub: 'user_clerk_123' });
+
+    const ok = await call(envFor(db), '/api/stats?domain=acme.test&timeframe=30d', authed(token));
+    assert.equal(ok.status, 200);
+    assert.equal((await ok.json() as any).timeframe, '30d');
+
+    const bad = await call(envFor(db), '/api/stats?domain=acme.test&timeframe=7years', authed(token));
+    assert.equal(bad.status, 400);
+    assert.equal((await bad.json() as any).error, 'invalid_timeframe');
   });
 
   it("refuses another tenant's domain", async () => {

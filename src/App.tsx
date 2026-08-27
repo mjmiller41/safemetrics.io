@@ -10,6 +10,10 @@ import {
 } from 'lucide-react';
 import { redirectToCheckout } from './lib/stripe';
 import { addDomain, fetchAccount } from './lib/account';
+import {
+  chartPaths, deltaFor, fetchStats, formatBucket, formatCount, formatPercent,
+  type DomainStats,
+} from './lib/stats';
 
 interface RouteData {
   path: string;
@@ -100,6 +104,56 @@ const FRAMEWORKS = [
   { id: 'laravel', name: 'Laravel Blade' }
 ];
 
+/** Weekday labels for the demo chart, which is a fixed shape rather than real data. */
+const DEMO_AXIS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun (Peak)'];
+
+/**
+ * Bar width as a share of the largest row, not of the total. Against a total, a
+ * realistic long tail renders every bar as an invisible sliver.
+ */
+function barWidth(value: number, rows: { views: number }[]): number {
+  const max = Math.max(...rows.map(r => r.views), 1);
+  return Math.round((value / max) * 100);
+}
+
+/** `US` → `United States`. Falls back to the raw code for `Unknown` and the like. */
+function countryName(code: string): string {
+  if (!code || code.length !== 2) return code || 'Unknown';
+  try {
+    return new Intl.DisplayNames(undefined, { type: 'region' }).of(code.toUpperCase()) ?? code;
+  } catch {
+    return code;
+  }
+}
+
+/** Thins axis labels to at most 7 so they cannot overlap on a narrow chart. */
+function axisLabels(all: string[]): string[] {
+  if (all.length <= 7) return all;
+  const step = (all.length - 1) / 6;
+  return Array.from({ length: 7 }, (_, i) => all[Math.round(i * step)]);
+}
+
+type TabId = 'routes' | 'sources' | 'geo' | 'tech' | 'goals';
+
+/** `tech` needs real device/browser rows, so it is not offered on the demo. */
+const LIVE_TABS: readonly TabId[] = ['routes', 'sources', 'geo', 'tech', 'goals'];
+const DEMO_TABS: readonly TabId[] = ['routes', 'sources', 'geo', 'goals'];
+
+function EmptyPanel({ label }: { label: string }) {
+  return (
+    <div className="p-4 rounded-lg bg-cosmic-950/70 border border-slate-800/80 text-xs text-slate-500 text-center">
+      {label}
+    </div>
+  );
+}
+
+/** What the dashboard can currently show for the selected site. */
+type StatsState =
+  | { kind: 'demo' }
+  | { kind: 'loading' }
+  | { kind: 'ready'; stats: DomainStats }
+  | { kind: 'error'; reason: 'no_domains' | 'not_owned' | 'unauthorized' | 'failed' };
+
 interface AppProps {
   hasClerk?: boolean;
   isSignedIn?: boolean;
@@ -110,7 +164,8 @@ interface AppProps {
 export default function App({ hasClerk = false, isSignedIn = false, getToken }: AppProps) {
   const [selectedDomain, setSelectedDomain] = useState('example.com');
   const [timeframe, setTimeframe] = useState<'24h' | '7d' | '30d' | 'all'>('7d');
-  const [activeTab, setActiveTab] = useState<'routes' | 'sources' | 'geo' | 'goals'>('routes');
+  const [activeTab, setActiveTab] = useState<TabId>('routes');
+  const [statsState, setStatsState] = useState<StatsState>({ kind: 'demo' });
   const [customDomainInput, setCustomDomainInput] = useState('example.com');
   const [selectedFramework, setSelectedFramework] = useState('next');
   const [copiedSnippet, setCopiedSnippet] = useState(false);
@@ -158,6 +213,38 @@ export default function App({ hasClerk = false, isSignedIn = false, getToken }: 
 
     return () => { cancelled = true; };
   }, [isSignedIn]);
+
+  // Real analytics for the selected site. Refetched whenever the site or the
+  // timeframe changes; signing out drops straight back to the demo figures.
+  useEffect(() => {
+    const mintToken = getTokenRef.current;
+    if (!isSignedIn || !mintToken || !selectedDomain) {
+      setStatsState({ kind: 'demo' });
+      return;
+    }
+
+    let cancelled = false;
+    setStatsState({ kind: 'loading' });
+
+    (async () => {
+      const token = await mintToken();
+      if (cancelled) return;
+      if (!token) {
+        setStatsState({ kind: 'error', reason: 'unauthorized' });
+        return;
+      }
+
+      const result = await fetchStats(token, selectedDomain, timeframe);
+      if (cancelled) return;
+      setStatsState(
+        result.ok
+          ? { kind: 'ready', stats: result.stats }
+          : { kind: 'error', reason: result.reason },
+      );
+    })();
+
+    return () => { cancelled = true; };
+  }, [isSignedIn, selectedDomain, timeframe]);
 
   // Simulate live incoming event stream
   useEffect(() => {
@@ -294,6 +381,46 @@ add_action('wp_head', function() {
   };
 
   const currentRoutes = ROUTES_DATA[selectedDomain] || ROUTES_DATA['example.com'];
+
+  // Real analytics for the selected site. Null whenever they cannot be shown —
+  // signed out, still loading, or the request failed — in which case the demo
+  // figures below stand in, which is what the marketing page has always shown.
+  const live = statsState.kind === 'ready' ? statsState.stats : null;
+
+  const routeRows = live
+    ? live.topPages.map(page => ({
+        path: page.name,
+        views: page.views,
+        pct: barWidth(page.views, live.topPages),
+        dwell: null as string | null,
+      }))
+    : currentRoutes.map(route => ({ path: route.path, views: route.views, pct: route.pct, dwell: route.dwell }));
+
+  const sourceRows = live
+    ? live.topReferrers.map(ref => ({
+        source: ref.name,
+        visitors: ref.visitors,
+        pct: barWidth(ref.views, live.topReferrers),
+        bounce: null as string | null,
+      }))
+    : SOURCES_DATA.map(s => ({ source: s.source, visitors: s.visitors, pct: s.pct, bounce: s.bounce }));
+
+  const geoRows = live
+    ? live.topCountries.map(c => ({ code: c.name, country: countryName(c.name), visitors: c.visitors }))
+    : GEO_DATA.map(g => ({ code: g.code, country: g.country, visitors: g.visitors }));
+
+  const chart = live ? chartPaths(live.series.map(p => p.views)) : null;
+  const chartLabels = live ? axisLabels(live.series.map(p => formatBucket(p.bucket))) : DEMO_AXIS;
+
+  const visitorDelta = live ? deltaFor(live.summary.visitors, live.previous?.visitors, { suffix: 'vs previous' }) : null;
+  const viewDelta = live ? deltaFor(live.summary.pageviews, live.previous?.pageviews, { suffix: 'vs previous' }) : null;
+  const bounceDelta = live && live.summary.bounceRate !== null
+    ? deltaFor(live.summary.bounceRate, live.previous?.bounceRate, { suffix: 'vs previous', lowerIsBetter: true })
+    : null;
+
+  const tabs = live ? LIVE_TABS : DEMO_TABS;
+  // Signing out while on `tech` would otherwise leave every panel unrendered.
+  const currentTab: TabId = tabs.includes(activeTab) ? activeTab : 'routes';
 
   // Carbon & Speed savings calculation
   const kbSavedMonthly = (calcViews * (45 - 0.8)).toFixed(0);
@@ -568,9 +695,27 @@ add_action('wp_head', function() {
                   <Plus className="w-3.5 h-3.5 text-cyan-400" />
                 </button>
 
-                <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs font-semibold">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                  <span>32 Live Sessions</span>
+                {/* Signed out this is the marketing figure; signed in it reports what the
+                    API actually returned, including why it returned nothing. */}
+                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-semibold ${
+                  statsState.kind === 'error'
+                    ? 'bg-amber-500/10 border-amber-500/20 text-amber-300'
+                    : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
+                }`}>
+                  {statsState.kind !== 'error' && (
+                    <span className={`w-2 h-2 rounded-full bg-emerald-400 ${statsState.kind === 'demo' ? 'animate-ping' : ''}`} />
+                  )}
+                  <span>
+                    {statsState.kind === 'demo' && '32 Live Sessions'}
+                    {statsState.kind === 'loading' && 'Loading…'}
+                    {statsState.kind === 'ready' && `${formatCount(statsState.stats.summary.visitors)} sessions · ${timeframe}`}
+                    {statsState.kind === 'error' && (
+                      statsState.reason === 'no_domains' ? 'No sites registered yet'
+                      : statsState.reason === 'not_owned' ? 'Not your site'
+                      : statsState.reason === 'unauthorized' ? 'Sign in again'
+                      : 'Stats unavailable'
+                    )}
+                  </span>
                 </div>
               </div>
 
@@ -597,9 +742,14 @@ add_action('wp_head', function() {
                   <span>Unique Sessions</span>
                   <Users className="w-4 h-4 text-cyan-400" />
                 </div>
-                <div className="text-2xl font-extrabold text-white">41,280</div>
-                <div className="text-[11px] text-emerald-400 mt-1 flex items-center gap-0.5 font-medium">
-                  <TrendingUp className="w-3 h-3" /> +16.4% vs last week
+                <div className="text-2xl font-extrabold text-white">
+                  {live ? formatCount(live.summary.visitors) : '41,280'}
+                </div>
+                <div className={`text-[11px] mt-1 flex items-center gap-0.5 font-medium ${
+                  live ? (visitorDelta?.positive === false ? 'text-amber-400' : 'text-emerald-400') : 'text-emerald-400'
+                }`}>
+                  <TrendingUp className="w-3 h-3" />
+                  {live ? (visitorDelta?.label ?? 'no prior window') : '+16.4% vs last week'}
                 </div>
               </div>
 
@@ -608,9 +758,14 @@ add_action('wp_head', function() {
                   <span>Telemetry Pageviews</span>
                   <Eye className="w-4 h-4 text-indigo-400" />
                 </div>
-                <div className="text-2xl font-extrabold text-white">128,450</div>
-                <div className="text-[11px] text-emerald-400 mt-1 flex items-center gap-0.5 font-medium">
-                  <TrendingUp className="w-3 h-3" /> +21.2% velocity
+                <div className="text-2xl font-extrabold text-white">
+                  {live ? formatCount(live.summary.pageviews) : '128,450'}
+                </div>
+                <div className={`text-[11px] mt-1 flex items-center gap-0.5 font-medium ${
+                  live ? (viewDelta?.positive === false ? 'text-amber-400' : 'text-emerald-400') : 'text-emerald-400'
+                }`}>
+                  <TrendingUp className="w-3 h-3" />
+                  {live ? (viewDelta?.label ?? 'no prior window') : '+21.2% velocity'}
                 </div>
               </div>
 
@@ -619,20 +774,29 @@ add_action('wp_head', function() {
                   <span>Bounce Index</span>
                   <BarChart2 className="w-4 h-4 text-teal-400" />
                 </div>
-                <div className="text-2xl font-extrabold text-white">31.8%</div>
-                <div className="text-[11px] text-emerald-400 mt-1 flex items-center gap-0.5 font-medium">
-                  <TrendingUp className="w-3 h-3" /> -3.4% lower bounce
+                <div className="text-2xl font-extrabold text-white">
+                  {live ? (formatPercent(live.summary.bounceRate) ?? '—') : '31.8%'}
+                </div>
+                <div className={`text-[11px] mt-1 flex items-center gap-0.5 font-medium ${
+                  live ? (bounceDelta?.positive === false ? 'text-amber-400' : 'text-emerald-400') : 'text-emerald-400'
+                }`}>
+                  <TrendingUp className="w-3 h-3" />
+                  {live ? (bounceDelta?.label ?? 'no prior window') : '-3.4% lower bounce'}
                 </div>
               </div>
 
+              {/* Dwell needs per-visit timing, which the tracker does not collect. Saying
+                  so is better than showing a number next to three real ones. */}
               <div className="p-4 rounded-xl bg-cosmic-950/80 border border-cyan-500/15">
                 <div className="flex items-center justify-between text-slate-400 text-xs mb-1">
                   <span>Mean Session Dwell</span>
                   <Clock className="w-4 h-4 text-cyan-400" />
                 </div>
-                <div className="text-2xl font-extrabold text-white">3m 18s</div>
-                <div className="text-[11px] text-cyan-400 mt-1 flex items-center gap-0.5 font-medium">
-                  <TrendingUp className="w-3 h-3" /> +45s engagement
+                <div className={`font-extrabold text-white ${live ? 'text-base pt-1' : 'text-2xl'}`}>
+                  {live ? 'Not tracked' : '3m 18s'}
+                </div>
+                <div className="text-[11px] text-slate-500 mt-1 flex items-center gap-0.5 font-medium">
+                  {live ? 'needs page timing' : <><TrendingUp className="w-3 h-3" /> +45s engagement</>}
                 </div>
               </div>
             </div>
@@ -667,42 +831,41 @@ add_action('wp_head', function() {
 
                   {/* Area Fill */}
                   <path
-                    d="M 0,90 Q 70,40 140,65 T 280,30 T 420,45 T 500,20 L 500,120 L 0,120 Z"
+                    d={live ? (chart?.area ?? '') : 'M 0,90 Q 70,40 140,65 T 280,30 T 420,45 T 500,20 L 500,120 L 0,120 Z'}
                     fill="url(#areaGrad)"
                   />
                   {/* Glowing Stroke */}
                   <path
-                    d="M 0,90 Q 70,40 140,65 T 280,30 T 420,45 T 500,20"
+                    d={live ? (chart?.line ?? '') : 'M 0,90 Q 70,40 140,65 T 280,30 T 420,45 T 500,20'}
                     fill="none"
                     stroke="url(#lineGrad)"
                     strokeWidth="3"
                     strokeLinecap="round"
                   />
-                  {/* Data Point Pulsers */}
-                  <circle cx="280" cy="30" r="4" fill="#22d3ee" className="animate-pulse" />
-                  <circle cx="500" cy="20" r="4" fill="#818cf8" />
+                  {!live && <circle cx="280" cy="30" r="4" fill="#22d3ee" className="animate-pulse" />}
+                  {!live && <circle cx="500" cy="20" r="4" fill="#818cf8" />}
                 </svg>
+
+                {live && !chart && (
+                  <div className="absolute inset-0 flex items-center justify-center text-xs text-slate-500">
+                    No pageviews in this window yet.
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-between text-[10px] text-slate-500 font-mono mt-2 pt-2 border-t border-slate-850">
-                <span>Mon</span>
-                <span>Tue</span>
-                <span>Wed</span>
-                <span>Thu</span>
-                <span>Fri</span>
-                <span>Sat</span>
-                <span>Sun (Peak)</span>
+                {chartLabels.map((label, i) => <span key={`${label}-${i}`}>{label}</span>)}
               </div>
             </div>
 
             {/* Breakdown Explorer Tabs */}
             <div className="flex items-center gap-2 border-b border-slate-800 pb-3 mb-4 text-xs font-semibold">
-              {(['routes', 'sources', 'geo', 'goals'] as const).map(tab => (
+              {tabs.map(tab => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
                   className={`px-3 py-1.5 rounded-lg transition capitalize flex items-center gap-1.5 ${
-                    activeTab === tab
+                    currentTab === tab
                       ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20'
                       : 'text-slate-400 hover:text-slate-200'
                   }`}
@@ -710,6 +873,7 @@ add_action('wp_head', function() {
                   {tab === 'routes' && <Layers className="w-3.5 h-3.5" />}
                   {tab === 'sources' && <ArrowUpRight className="w-3.5 h-3.5" />}
                   {tab === 'geo' && <Globe className="w-3.5 h-3.5" />}
+                  {tab === 'tech' && <BarChart2 className="w-3.5 h-3.5" />}
                   {tab === 'goals' && <Sparkles className="w-3.5 h-3.5" />}
                   <span>{tab}</span>
                 </button>
@@ -717,13 +881,14 @@ add_action('wp_head', function() {
             </div>
 
             {/* Tab Views */}
-            {activeTab === 'routes' && (
+            {currentTab === 'routes' && (
               <div className="space-y-2">
-                {currentRoutes.map((r, i) => (
+                {routeRows.length === 0 && <EmptyPanel label="No pageviews recorded in this window." />}
+                {routeRows.map((r, i) => (
                   <div key={i} className="p-2.5 rounded-lg bg-cosmic-950/70 border border-slate-800/80 flex items-center justify-between text-xs">
                     <span className="font-mono text-cyan-300 font-medium truncate max-w-xs">{r.path}</span>
                     <div className="flex items-center gap-6">
-                      <span className="text-slate-400">Dwell: <strong className="text-slate-200">{r.dwell}</strong></span>
+                      {r.dwell && <span className="text-slate-400">Dwell: <strong className="text-slate-200">{r.dwell}</strong></span>}
                       <span className="font-mono text-white font-bold">{r.views.toLocaleString()}</span>
                       <div className="w-16 h-1.5 bg-slate-850 rounded-full overflow-hidden hidden sm:block">
                         <div style={{ width: `${r.pct}%` }} className="h-full bg-gradient-to-r from-cyan-500 to-indigo-500 rounded-full" />
@@ -734,13 +899,14 @@ add_action('wp_head', function() {
               </div>
             )}
 
-            {activeTab === 'sources' && (
+            {currentTab === 'sources' && (
               <div className="space-y-2">
-                {SOURCES_DATA.map((s, i) => (
+                {sourceRows.length === 0 && <EmptyPanel label="No referrers recorded in this window." />}
+                {sourceRows.map((s, i) => (
                   <div key={i} className="p-2.5 rounded-lg bg-cosmic-950/70 border border-slate-800/80 flex items-center justify-between text-xs">
                     <span className="text-slate-200 font-medium">{s.source}</span>
                     <div className="flex items-center gap-6">
-                      <span className="text-slate-400">Bounce: <strong className="text-slate-200">{s.bounce}</strong></span>
+                      {s.bounce && <span className="text-slate-400">Bounce: <strong className="text-slate-200">{s.bounce}</strong></span>}
                       <span className="font-mono text-white font-bold">{s.visitors.toLocaleString()}</span>
                       <div className="w-16 h-1.5 bg-slate-850 rounded-full overflow-hidden hidden sm:block">
                         <div style={{ width: `${s.pct}%` }} className="h-full bg-gradient-to-r from-teal-400 to-cyan-500 rounded-full" />
@@ -751,9 +917,10 @@ add_action('wp_head', function() {
               </div>
             )}
 
-            {activeTab === 'geo' && (
+            {currentTab === 'geo' && (
               <div className="grid sm:grid-cols-2 gap-3">
-                {GEO_DATA.map((g, i) => (
+                {geoRows.length === 0 && <EmptyPanel label="No visitor locations recorded in this window." />}
+                {geoRows.map((g, i) => (
                   <div key={i} className="p-3 rounded-lg bg-cosmic-950/70 border border-slate-800/80 flex items-center justify-between text-xs">
                     <div className="flex items-center gap-2">
                       <span className="px-1.5 py-0.5 rounded bg-cyan-500/10 text-cyan-400 text-[10px] font-bold font-mono">{g.code}</span>
@@ -765,21 +932,59 @@ add_action('wp_head', function() {
               </div>
             )}
 
-            {activeTab === 'goals' && (
-              <div className="space-y-2">
-                {GOALS_DATA.map((goal, i) => (
-                  <div key={i} className="p-3 rounded-lg bg-cosmic-950/70 border border-slate-800/80 flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                      <span className="text-slate-200 font-semibold">{goal.name}</span>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <span className="text-slate-400">Rate: <strong className="text-emerald-400">{goal.rate}</strong></span>
-                      <span className="font-mono text-cyan-300 font-bold">{goal.conversions.toLocaleString()} conv.</span>
-                    </div>
+            {currentTab === 'tech' && live && (
+              <div className="grid sm:grid-cols-2 gap-6">
+                {([['Devices', live.topDevices], ['Browsers', live.topBrowsers]] as const).map(([title, rows]) => (
+                  <div key={title} className="space-y-2">
+                    <div className="text-[11px] uppercase tracking-wide text-slate-500 font-semibold">{title}</div>
+                    {rows.length === 0 && <EmptyPanel label={`No ${title.toLowerCase()} recorded.`} />}
+                    {rows.map((row, i) => (
+                      <div key={i} className="p-2.5 rounded-lg bg-cosmic-950/70 border border-slate-800/80 flex items-center justify-between text-xs">
+                        <span className="text-slate-200 font-medium">{row.name}</span>
+                        <div className="flex items-center gap-4">
+                          <span className="font-mono text-white font-bold">{row.views.toLocaleString()}</span>
+                          <div className="w-16 h-1.5 bg-slate-850 rounded-full overflow-hidden hidden sm:block">
+                            <div style={{ width: `${barWidth(row.views, [...rows])}%` }} className="h-full bg-gradient-to-r from-indigo-400 to-cyan-500 rounded-full" />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 ))}
               </div>
+            )}
+
+            {currentTab === 'goals' && (
+              live ? (
+                // Goals need a way to define and record conversions. Nothing does yet, so
+                // the demo's figures would be pure invention sitting beside real data.
+                <div className="p-4 rounded-lg bg-cosmic-950/70 border border-slate-800/80 text-xs text-slate-400 space-y-2">
+                  <div className="flex items-center gap-2 text-slate-200 font-semibold">
+                    <Sparkles className="w-4 h-4 text-cyan-400" /> Goals are not tracked yet
+                  </div>
+                  <p>
+                    The tracker can already send custom events via{' '}
+                    <code className="font-mono text-cyan-300">safemetrics('signup')</code>, but nothing
+                    defines a goal or counts conversions against it. Rather than show invented
+                    numbers next to your real traffic, this panel stays empty until it can be honest.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {GOALS_DATA.map((goal, i) => (
+                    <div key={i} className="p-3 rounded-lg bg-cosmic-950/70 border border-slate-800/80 flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                        <span className="text-slate-200 font-semibold">{goal.name}</span>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <span className="text-slate-400">Rate: <strong className="text-emerald-400">{goal.rate}</strong></span>
+                        <span className="font-mono text-cyan-300 font-bold">{goal.conversions.toLocaleString()} conv.</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
             )}
           </div>
         </section>
