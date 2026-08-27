@@ -1,0 +1,12 @@
+-- 0004_unique_domain_name.sql
+--
+-- Makes `domains.domain_name` globally unique.
+--
+-- The ingestion endpoint identifies a site purely by the hostname the beacon
+-- reports, so if two tenants could register the same hostname every event for it
+-- would be ambiguous — and `/api/stats` would hand one tenant's traffic to the
+-- other. The schema's UNIQUE(tenant_id, domain_name) does not prevent that.
+--
+-- Additive and non-destructive: creating the index fails loudly if duplicates
+-- already exist, rather than dropping rows to make room for it.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_domains_domain_name_unique ON domains(domain_name);

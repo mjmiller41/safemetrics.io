@@ -9,6 +9,7 @@ import {
   Plus, X, LogIn, Key
 } from 'lucide-react';
 import { redirectToCheckout } from './lib/stripe';
+import { addDomain, fetchAccount } from './lib/account';
 
 interface RouteData {
   path: string;
@@ -96,9 +97,12 @@ const FRAMEWORKS = [
 
 interface AppProps {
   hasClerk?: boolean;
+  isSignedIn?: boolean;
+  /** Mints a Clerk session token for the worker API. Absent when Clerk is unconfigured. */
+  getToken?: () => Promise<string | null>;
 }
 
-export default function App({ hasClerk = false }: AppProps) {
+export default function App({ hasClerk = false, isSignedIn = false, getToken }: AppProps) {
   const [selectedDomain, setSelectedDomain] = useState('fleadays.com');
   const [timeframe, setTimeframe] = useState<'24h' | '7d' | '30d' | 'all'>('7d');
   const [activeTab, setActiveTab] = useState<'routes' | 'sources' | 'geo' | 'goals'>('routes');
@@ -120,6 +124,30 @@ export default function App({ hasClerk = false }: AppProps) {
 
   const [activePlan, setActivePlan] = useState<'free' | 'pro' | 'scale'>('free');
   const [checkoutToast, setCheckoutToast] = useState<string | null>(null);
+
+  // Load the signed-in account: its real plan and the domains it actually owns.
+  // Signing in is also what provisions the tenant, since /api/me is the first
+  // authenticated call the app makes.
+  useEffect(() => {
+    if (!isSignedIn || !getToken) return;
+    let cancelled = false;
+
+    (async () => {
+      const token = await getToken();
+      if (!token) return;
+      const account = await fetchAccount(token);
+      if (cancelled || !account) return;
+
+      setActivePlan(account.plan === 'hobby' ? 'free' : account.plan);
+      if (account.domains.length) {
+        setUserDomains(account.domains);
+        setSelectedDomain(account.domains[0]);
+        setCustomDomainInput(account.domains[0]);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [isSignedIn, getToken]);
 
   // Simulate live incoming event stream
   useEffect(() => {
@@ -161,13 +189,19 @@ export default function App({ hasClerk = false }: AppProps) {
   }, []);
 
   const handleCheckout = async (planId: 'pro' | 'scale') => {
+    if (!hasClerk || !isSignedIn) {
+      setCheckoutToast('Sign in first — a subscription has to belong to an account.');
+      return;
+    }
+
     try {
       await redirectToCheckout({
         planId,
         interval: billingCycle === 'annual' ? 'yearly' : 'monthly',
+        token: getToken ? await getToken() : null,
       });
     } catch (err) {
-      alert(`Checkout error: ${(err as Error).message}`);
+      setCheckoutToast(`Checkout error: ${(err as Error).message}`);
     }
   };
 
@@ -222,15 +256,29 @@ add_action('wp_head', function() {
     setTimeout(() => setCopiedSnippet(false), 2000);
   };
 
-  const handleAddDomain = (e: React.FormEvent) => {
+  const handleAddDomain = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newDomainName.trim()) return;
-    const clean = newDomainName.trim().toLowerCase().replace(/^https?:\/\//, '');
+    let clean = newDomainName.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+
+    // Signed in, the domain is registered to the tenant — which is what makes the
+    // beacon's events accepted for it. Signed out it is a local preview only.
+    if (isSignedIn && getToken) {
+      const token = await getToken();
+      const result = token ? await addDomain(token, clean) : null;
+      if (!result) return;
+      if (!result.ok) {
+        setCheckoutToast(result.message);
+        return;
+      }
+      clean = result.domain;
+    }
+
     if (!userDomains.includes(clean)) {
       setUserDomains(prev => [clean, ...prev]);
-      setSelectedDomain(clean);
-      setCustomDomainInput(clean);
     }
+    setSelectedDomain(clean);
+    setCustomDomainInput(clean);
     setNewDomainName('');
     setShowAddDomainModal(false);
   };

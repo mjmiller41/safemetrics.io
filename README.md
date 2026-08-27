@@ -74,6 +74,31 @@ eyeballing it.
   once nothing references it.
 - The install guide's "ignores localhost by default" behaviour describes the
   intended tracker, which is not built here.
-- `/api/stats` is not authenticated yet, and nothing populates the `users`
-  table, so the Stripe webhook cannot resolve a tenant for a completed
-  checkout.
+
+## Accounts and tenancy
+
+Every API call except `/api/health` and `/api/event` requires a Clerk session
+token (`Authorization: Bearer <token>`), verified in the worker against the
+instance's JWKS (`worker/clerk-auth.ts`).
+
+The first authenticated request a Clerk user makes provisions their workspace:
+a `tenants` row plus a `users` row keyed on the Clerk user id
+(`worker/tenancy.ts`). That `users` row is what lets the Stripe webhook resolve
+a completed checkout back to a tenant — `/api/checkout` sends the *verified*
+user id as `client_reference_id`, never one supplied by the caller. A Clerk
+organization, when the session has one, is the tenant, so teammates share a
+workspace.
+
+Domains are registered with `POST /api/domains` and are globally unique
+(migration `0004`). `/api/stats` only returns domains the caller's tenant owns
+(403 otherwise), and `/api/event` drops events for unregistered domains —
+previously it filed them under a shared `tenant_default` on the `pro` plan.
+
+### Deploy configuration
+
+| Name | Where | Purpose |
+|---|---|---|
+| `CLERK_ISSUER` | `wrangler.jsonc` vars | Clerk Frontend API origin, e.g. `https://clerk.safemetrics.io`. Unset ⇒ authenticated endpoints answer 503. |
+| `VITE_CLERK_PUBLISHABLE_KEY` | build env | Without it the SPA renders signed-out and nobody can reach the API. |
+| `SESSION_SALT` | `wrangler secret put` | Salt for the daily visitor hash. Falls back to a literal, which makes the hash reversible for anyone with the source. |
+| `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | `wrangler secret put` | Checkout and webhook verification. |
