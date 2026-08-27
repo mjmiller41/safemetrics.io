@@ -8,6 +8,7 @@ import {
   CheckCircle2, Sparkles, Activity, Zap, Layers,
   Plus, X, LogIn, Key
 } from 'lucide-react';
+import { redirectToCheckout } from './lib/stripe';
 
 interface RouteData {
   path: string;
@@ -117,22 +118,41 @@ export default function App({ hasClerk = false }: AppProps) {
     { id: 3, path: '/', country: 'DE', time: '7s ago', latency: '45ms' }
   ]);
 
-  // Simulate live incoming event stream
+  const [activePlan, setActivePlan] = useState<'free' | 'pro' | 'scale'>('free');
+  const [checkoutToast, setCheckoutToast] = useState<string | null>(null);
+
+  // Check URL parameters for return from Stripe Checkout
   useEffect(() => {
-    const interval = setInterval(() => {
-      const paths = ['/', '/categories/flea-market', '/pricing', '/ca/los-angeles', '/docs', '/login'];
-      const countries = ['US', 'DE', 'GB', 'CA', 'JP', 'FR', 'AU'];
-      const newPing = {
-        id: Date.now(),
-        path: paths[Math.floor(Math.random() * paths.length)],
-        country: countries[Math.floor(Math.random() * countries.length)],
-        time: 'Just now',
-        latency: `${Math.floor(Math.random() * 25 + 30)}ms`
-      };
-      setLivePings(prev => [newPing, ...prev.slice(0, 3)]);
-    }, 4500);
-    return () => clearInterval(interval);
+    const params = new URLSearchParams(window.location.search);
+    const checkoutStatus = params.get('checkout');
+    const plan = params.get('plan') as 'pro' | 'scale' | null;
+
+    if (checkoutStatus === 'success' && plan) {
+      setActivePlan(plan);
+      setCheckoutToast(`🎉 Welcome to SafeMetrics ${plan === 'pro' ? 'Pro Growth' : 'Scale Business'}!`);
+      const url = new URL(window.location.href);
+      url.searchParams.delete('checkout');
+      url.searchParams.delete('plan');
+      url.searchParams.delete('session_id');
+      window.history.replaceState({}, '', url.toString());
+    } else if (checkoutStatus === 'cancel') {
+      setCheckoutToast('Checkout cancelled — you are still on your previous plan.');
+      const url = new URL(window.location.href);
+      url.searchParams.delete('checkout');
+      window.history.replaceState({}, '', url.toString());
+    }
   }, []);
+
+  const handleCheckout = async (planId: 'pro' | 'scale') => {
+    try {
+      await redirectToCheckout({
+        planId,
+        interval: billingCycle === 'annual' ? 'yearly' : 'monthly',
+      });
+    } catch (err) {
+      alert(`Checkout error: ${(err as Error).message}`);
+    }
+  };
 
   const getFrameworkSnippet = () => {
     const d = customDomainInput || 'yourdomain.com';
@@ -927,10 +947,15 @@ add_action('wp_head', function() {
                 </div>
 
                 <button
-                  onClick={() => alert('Stripe checkout integration active.')}
-                  className="mt-6 block w-full text-center py-2 px-4 rounded-lg bg-gradient-to-r from-cyan-500 to-indigo-600 text-xs font-bold text-white hover:from-cyan-400 hover:to-indigo-500 shadow-glow-cyan transition"
+                  onClick={() => handleCheckout('pro')}
+                  disabled={activePlan === 'pro'}
+                  className={`mt-6 block w-full text-center py-2 px-4 rounded-lg text-xs font-bold transition ${
+                    activePlan === 'pro'
+                      ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 cursor-default'
+                      : 'bg-gradient-to-r from-cyan-500 to-indigo-600 text-white hover:from-cyan-400 hover:to-indigo-500 shadow-glow-cyan'
+                  }`}
                 >
-                  Start 14-Day Free Trial
+                  {activePlan === 'pro' ? 'Current Active Plan' : 'Upgrade to Pro Growth'}
                 </button>
               </div>
 
@@ -961,15 +986,33 @@ add_action('wp_head', function() {
                 </div>
 
                 <button
-                  onClick={() => alert('Contact sales for custom plans.')}
-                  className="mt-6 block w-full text-center py-2 px-4 rounded-lg bg-cosmic-950 border border-slate-800 text-xs font-semibold text-white hover:bg-slate-850 transition"
+                  onClick={() => handleCheckout('scale')}
+                  disabled={activePlan === 'scale'}
+                  className={`mt-6 block w-full text-center py-2 px-4 rounded-lg text-xs font-semibold transition ${
+                    activePlan === 'scale'
+                      ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 cursor-default'
+                      : 'bg-cosmic-950 border border-slate-800 text-white hover:bg-slate-850'
+                  }`}
                 >
-                  Contact Sales
+                  {activePlan === 'scale' ? 'Current Active Plan' : 'Upgrade to Scale Business'}
                 </button>
               </div>
             </div>
           </div>
         </section>
+
+        {checkoutToast && (
+          <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 bg-cosmic-900 border border-cyan-500/40 text-slate-200 px-4 py-3 rounded-xl shadow-2xl shadow-cyan-950 animate-in fade-in slide-in-from-bottom-4">
+            <Sparkles className="w-5 h-5 text-cyan-400 shrink-0" />
+            <span className="text-sm font-medium">{checkoutToast}</span>
+            <button
+              onClick={() => setCheckoutToast(null)}
+              className="ml-2 text-slate-400 hover:text-white"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
       </main>
 
       {/* Footer */}
