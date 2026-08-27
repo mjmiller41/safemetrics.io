@@ -51,6 +51,12 @@
       ]
     }
     </script>
+
+    <!-- SafeMetrics tracking its own traffic. `data-domain` must match the domain
+         registered to the tenant, not the hostname being served: www and apex both
+         report as `safemetrics.io` so their stats do not split in two. The script
+         no-ops on localhost, so `npm run dev` does not write to production. -->
+    <script defer data-domain="safemetrics.io" src="/js/script.js"></script>
   </head>
   <body class="bg-cosmic-950 text-slate-100 antialiased selection:bg-cyan-500 selection:text-white font-sans bg-cyber-grid">
     <div id="root">
