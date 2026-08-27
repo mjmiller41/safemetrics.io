@@ -54,8 +54,13 @@ export async function ensureTenantForUser(
     .bind(identity.sub)
     .first<UserRow>();
 
+  const targetTenantId = tenantIdFor(identity);
+
   if (existing) {
-    const tenant = await loadTenant(db, existing.tenant_id);
+    // A user who signed in personally before joining an organization still points at
+    // their private tenant; move them onto the shared one so teammates converge.
+    const stale = !!identity.orgId && existing.tenant_id !== targetTenantId;
+    const tenant = stale ? null : await loadTenant(db, existing.tenant_id);
     if (tenant) {
       return {
         tenantId: tenant.id,
@@ -65,12 +70,14 @@ export async function ensureTenantForUser(
         provisioned: false,
       };
     }
-    // The user row outlived its tenant (manual deletion). Re-provision rather than
-    // 500 on every subsequent request.
-    await db.prepare('DELETE FROM users WHERE id = ?').bind(identity.sub).run();
+    if (!stale) {
+      // The user row outlived its tenant (manual deletion). Re-provision rather than
+      // 500 on every subsequent request.
+      await db.prepare('DELETE FROM users WHERE id = ?').bind(identity.sub).run();
+    }
   }
 
-  const tenantId = tenantIdFor(identity);
+  const tenantId = targetTenantId;
   const name = workspaceNameFor(identity);
 
   await db

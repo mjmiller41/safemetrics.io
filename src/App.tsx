@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   SignedIn, SignedOut, SignInButton, SignUpButton, UserButton, useUser
 } from '@clerk/clerk-react';
@@ -127,13 +127,18 @@ export default function App({ hasClerk = false, isSignedIn = false, getToken }: 
 
   // Load the signed-in account: its real plan and the domains it actually owns.
   // Signing in is also what provisions the tenant, since /api/me is the first
-  // authenticated call the app makes.
+  // authenticated call the app makes. Keyed on sign-in state alone, via a ref, so a
+  // token refresh cannot re-run this and snap the user's selected site back.
+  const getTokenRef = useRef(getToken);
+  getTokenRef.current = getToken;
+
   useEffect(() => {
-    if (!isSignedIn || !getToken) return;
+    const mintToken = getTokenRef.current;
+    if (!isSignedIn || !mintToken) return;
     let cancelled = false;
 
     (async () => {
-      const token = await getToken();
+      const token = await mintToken();
       if (!token) return;
       const account = await fetchAccount(token);
       if (cancelled || !account) return;
@@ -147,7 +152,7 @@ export default function App({ hasClerk = false, isSignedIn = false, getToken }: 
     })();
 
     return () => { cancelled = true; };
-  }, [isSignedIn, getToken]);
+  }, [isSignedIn]);
 
   // Simulate live incoming event stream
   useEffect(() => {

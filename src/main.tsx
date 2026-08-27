@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import ReactDOM from 'react-dom/client';
 import { ClerkProvider, useAuth } from '@clerk/clerk-react';
 import { dark } from '@clerk/themes';
@@ -16,7 +16,10 @@ const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || '';
  */
 function AppWithClerk() {
   const { getToken, isSignedIn } = useAuth();
-  return <App hasClerk={true} isSignedIn={!!isSignedIn} getToken={() => getToken()} />;
+  // Stable identity: the app's account effect depends on this, and a fresh closure
+  // each render would refetch the account and reset the selected site.
+  const token = useCallback(() => getToken(), [getToken]);
+  return <App hasClerk={true} isSignedIn={!!isSignedIn} getToken={token} />;
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

@@ -53,6 +53,20 @@ describe('ensureTenantForUser', () => {
     assert.equal(a.tenantId, b.tenantId);
   });
 
+  it('moves a personal user onto the org tenant once they sign in under one', async () => {
+    const db = createTestDatabase();
+    const personal = await ensureTenantForUser(db as any, identity({ sub: 'user_a' }));
+    const teammate = await ensureTenantForUser(db as any, identity({ sub: 'user_b', orgId: 'org_acme' }));
+
+    const joined = await ensureTenantForUser(db as any, identity({ sub: 'user_a', orgId: 'org_acme' }));
+
+    assert.notEqual(joined.tenantId, personal.tenantId);
+    assert.equal(joined.tenantId, teammate.tenantId);
+
+    const row = db.sqlite.prepare('SELECT tenant_id FROM users WHERE id = ?').get('user_a') as any;
+    assert.equal(row.tenant_id, teammate.tenantId);
+  });
+
   it('reports the existing tenant plan for an already-provisioned user', async () => {
     const db = createTestDatabase();
     db.sqlite.exec("UPDATE tenants SET plan = 'pro' WHERE id = 'tenant_acme'");
