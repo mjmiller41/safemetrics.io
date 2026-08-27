@@ -3,13 +3,20 @@
 Marketing site and product demo for SafeMetrics — a privacy-first, cookie-free
 web analytics service positioned against Google Analytics 4.
 
-React 18 + TypeScript + Vite + Tailwind 3. No backend: the dashboard runs on
-demo data generated in the browser, which is also the product's point.
+React 18 + TypeScript + Vite + Tailwind 3 on the front end, with a Cloudflare
+Worker (`worker/`) over D1 serving `/api/*` — ingestion, stats, Stripe checkout
+and the Stripe webhook. The marketing page itself still runs on demo data
+generated in the browser, which is also the product's point.
+
+Node 22 or newer is required: the worker tests import `node:sqlite` and run
+TypeScript directly.
 
 ```bash
 npm install
 npm run dev      # http://localhost:3001
 npm run build    # tsc && vite build → dist/
+npm test         # worker tests
+npm run deploy   # build + wrangler deploy
 ```
 
 ## What's on the page
@@ -26,7 +33,8 @@ npm run build    # tsc && vite build → dist/
 ## The dashboard
 
 `src/components/Dashboard.tsx` is the whole demo. It is a real UI, not a
-screenshot — every control works.
+screenshot — every control works. Note that it is currently not mounted:
+`src/App.tsx` renders its own hardcoded figures instead.
 
 - **`src/lib/data.ts`** generates the dataset from a seeded PRNG (`mulberry32`),
   so the same range always produces the same chart rather than reshuffling on
@@ -60,7 +68,12 @@ eyeballing it.
 
 ## Notes
 
-- `data-domain` and the snippet host are display-only; there is no ingest
-  endpoint yet.
+- The tracker is served at `/js/script.js`, which is what the Integration Studio
+  emits. `public/beacon.js` is a byte-identical copy kept only because
+  `public/llms.txt` published that URL; keep the two in sync or drop the alias
+  once nothing references it.
 - The install guide's "ignores localhost by default" behaviour describes the
   intended tracker, which is not built here.
+- `/api/stats` is not authenticated yet, and nothing populates the `users`
+  table, so the Stripe webhook cannot resolve a tenant for a completed
+  checkout.

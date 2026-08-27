@@ -3,12 +3,15 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "vite",
     "dev:worker": "wrangler dev",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "node --test worker/*.test.ts",
+    "test": "node --experimental-strip-types --experimental-sqlite --test worker/*.test.ts",
     "typecheck:worker": "tsc -p tsconfig.worker.json",
     "deploy": "npm run build && wrangler deploy"
   },
