@@ -38,27 +38,32 @@ interface GoalData {
   rate: string;
 }
 
-const DOMAINS_LIST = ['fleadays.com', 'stillbeat.io', 'squiggles.ink', 'timbertracecrafts.com', 'ledgerdiff.com'];
+// Placeholder sites for the signed-out demo. These are deliberately RFC 2606
+// reserved names: the dashboard shows invented traffic figures next to whatever is
+// listed here, and attaching those to a domain somebody actually owns would be
+// putting words in their mouth. `example.com` and its subdomains can never be
+// registered, so there is nobody to misrepresent.
+const DOMAINS_LIST = ['example.com', 'shop.example.com', 'docs.example.com', 'blog.example.com', 'app.example.com'];
 
 const ROUTES_DATA: Record<string, RouteData[]> = {
-  'fleadays.com': [
+  'example.com': [
     { path: '/', views: 34120, pct: 44, dwell: '3m 12s' },
-    { path: '/categories/flea-market', views: 18450, pct: 24, dwell: '2m 45s' },
-    { path: '/ca/los-angeles', views: 9820, pct: 13, dwell: '1m 55s' },
-    { path: '/tx/austin', views: 6410, pct: 8, dwell: '2m 10s' },
-    { path: '/fl/orlando', views: 4230, pct: 5, dwell: '1m 40s' }
+    { path: '/features', views: 18450, pct: 24, dwell: '2m 45s' },
+    { path: '/pricing', views: 9820, pct: 13, dwell: '1m 55s' },
+    { path: '/about', views: 6410, pct: 8, dwell: '2m 10s' },
+    { path: '/contact', views: 4230, pct: 5, dwell: '1m 40s' }
   ],
-  'stillbeat.io': [
+  'shop.example.com': [
     { path: '/', views: 12450, pct: 52, dwell: '2m 30s' },
-    { path: '/docs/api', views: 5890, pct: 25, dwell: '4m 10s' },
-    { path: '/pricing', views: 3410, pct: 14, dwell: '1m 20s' },
-    { path: '/integrations/telegram', views: 1820, pct: 8, dwell: '3m 05s' }
+    { path: '/collections/new-arrivals', views: 5890, pct: 25, dwell: '4m 10s' },
+    { path: '/cart', views: 3410, pct: 14, dwell: '1m 20s' },
+    { path: '/checkout', views: 1820, pct: 8, dwell: '3m 05s' }
   ],
-  'squiggles.ink': [
+  'docs.example.com': [
     { path: '/', views: 24800, pct: 62, dwell: '8m 45s' },
-    { path: '/canvas/demo', views: 8900, pct: 22, dwell: '12m 10s' },
-    { path: '/pricing', views: 3600, pct: 9, dwell: '1m 15s' },
-    { path: '/export', views: 2400, pct: 6, dwell: '2m 40s' }
+    { path: '/getting-started', views: 8900, pct: 22, dwell: '12m 10s' },
+    { path: '/api-reference', views: 3600, pct: 9, dwell: '1m 15s' },
+    { path: '/changelog', views: 2400, pct: 6, dwell: '2m 40s' }
   ]
 };
 
@@ -103,10 +108,10 @@ interface AppProps {
 }
 
 export default function App({ hasClerk = false, isSignedIn = false, getToken }: AppProps) {
-  const [selectedDomain, setSelectedDomain] = useState('fleadays.com');
+  const [selectedDomain, setSelectedDomain] = useState('example.com');
   const [timeframe, setTimeframe] = useState<'24h' | '7d' | '30d' | 'all'>('7d');
   const [activeTab, setActiveTab] = useState<'routes' | 'sources' | 'geo' | 'goals'>('routes');
-  const [customDomainInput, setCustomDomainInput] = useState('fleadays.com');
+  const [customDomainInput, setCustomDomainInput] = useState('example.com');
   const [selectedFramework, setSelectedFramework] = useState('next');
   const [copiedSnippet, setCopiedSnippet] = useState(false);
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
@@ -288,7 +293,7 @@ add_action('wp_head', function() {
     setShowAddDomainModal(false);
   };
 
-  const currentRoutes = ROUTES_DATA[selectedDomain] || ROUTES_DATA['fleadays.com'];
+  const currentRoutes = ROUTES_DATA[selectedDomain] || ROUTES_DATA['example.com'];
 
   // Carbon & Speed savings calculation
   const kbSavedMonthly = (calcViews * (45 - 0.8)).toFixed(0);
