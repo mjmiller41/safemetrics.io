@@ -269,7 +269,7 @@ test('ignores a checkout for a different product on the shared Stripe account', 
   // too and must never be applied to a SafeMetrics tenant.
   const result = await deliver(
     db,
-    checkoutEvent({ metadata: { planId: 'squiggles_team' } }),
+    checkoutEvent({ metadata: { planId: 'other_product_team' } }),
     { fetchSubscription: async () => ({ items: { data: [{ price: { id: OTHER_PRODUCT_PRICE } }] } }) },
   );
 
