@@ -1,5 +1,11 @@
-import stripePrices from './stripe-prices.json';
-
+/**
+ * Starts a Stripe Checkout session.
+ *
+ * Only the tier and the interval are sent. The worker looks up the price and the
+ * redirect URLs itself — anything the browser named would be a value the buyer
+ * could edit, and a buyer must not get to choose what they are charged or where
+ * Stripe sends them afterwards.
+ */
 export interface CheckoutOptions {
   planId: 'pro' | 'scale';
   interval?: 'month' | 'year' | 'monthly' | 'yearly';
@@ -15,14 +21,6 @@ export async function redirectToCheckout(options: CheckoutOptions): Promise<void
   const { planId, interval = 'monthly', token } = options;
   const isYearly = interval === 'yearly' || interval === 'year';
 
-  const plan = stripePrices[planId as keyof typeof stripePrices];
-  if (!plan) {
-    throw new Error(`Invalid plan ID: ${planId}`);
-  }
-
-  const priceId = isYearly ? plan.yearlyPriceId : plan.monthlyPriceId;
-  const origin = window.location.origin;
-
   const response = await fetch('/api/checkout', {
     method: 'POST',
     headers: {
@@ -30,11 +28,8 @@ export async function redirectToCheckout(options: CheckoutOptions): Promise<void
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify({
-      priceId,
       planId,
       interval: isYearly ? 'year' : 'month',
-      successUrl: `${origin}/?checkout=success&plan=${planId}`,
-      cancelUrl: `${origin}/?checkout=cancel`,
     }),
   });
 

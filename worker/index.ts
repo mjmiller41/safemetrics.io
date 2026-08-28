@@ -2,6 +2,7 @@ import { handleStripeWebhookRequest } from './stripe-webhook.ts';
 import { bearerTokenFrom, verifyClerkToken, type AuthFailureReason } from './clerk-auth.ts';
 import { claimDomain, ensureTenantForUser, findDomain, listDomains, normalizeDomain, type TenantContext } from './tenancy.ts';
 import { isTimeframe, loadDomainStats, TIMEFRAMES, type Timeframe } from './stats.ts';
+import { FREE_PLAN, planById, priceForPlan, type BillingInterval } from './plans.ts';
 
 export interface Env {
   DB: D1Database;
@@ -165,7 +166,10 @@ export default {
           headers: { 'Content-Type': 'application/json', ...corsHeaders }
         });
       } catch (err: any) {
-        return new Response(JSON.stringify({ error: err.message }), {
+        // The beacon is public and unauthenticated, so the reason stays in the logs
+        // rather than being handed to whoever sent the request.
+        console.error(`[event] ${err?.message}`);
+        return new Response(JSON.stringify({ error: 'ingest_failed' }), {
           status: 500,
           headers: { 'Content-Type': 'application/json', ...corsHeaders }
         });
@@ -273,15 +277,24 @@ export default {
       try {
         const bodyText = await request.text();
         const payload = JSON.parse(bodyText || '{}');
-        const { priceId, planId, successUrl, cancelUrl } = payload;
         const userId = auth.context.userId;
         const userEmail = auth.email;
 
+        // The tier is looked up, and the price is derived from it. Both used to come
+        // straight from the request body, which let a caller pair any price on the
+        // Stripe account with any tier — pay for `pro`, be granted `scale`. Nothing
+        // the caller sends decides what is charged or what is granted.
+        const plan = planById(payload.planId);
+        if (!plan || plan.id === FREE_PLAN) {
+          return json({ error: 'unknown_plan' }, 400, corsHeaders);
+        }
+
+        const interval: BillingInterval =
+          payload.interval === 'year' || payload.interval === 'yearly' ? 'year' : 'month';
+        const priceId = priceForPlan(plan, interval);
         if (!priceId) {
-          return new Response(JSON.stringify({ error: 'Missing priceId' }), {
-            status: 400,
-            headers: { 'Content-Type': 'application/json', ...corsHeaders }
-          });
+          console.error(`[checkout] no ${interval} price configured for ${plan.id}`);
+          return json({ error: 'plan_not_purchasable' }, 400, corsHeaders);
         }
 
         // Never fall back to a literal key here — a hardcoded secret ships inside the
@@ -289,22 +302,22 @@ export default {
         const stripeKey = env.STRIPE_SECRET_KEY;
         if (!stripeKey) {
           console.error('[checkout] STRIPE_SECRET_KEY is not configured');
-          return new Response(JSON.stringify({ error: 'Billing is not configured' }), {
-            status: 500,
-            headers: { 'Content-Type': 'application/json', ...corsHeaders }
-          });
+          return json({ error: 'Billing is not configured' }, 500, corsHeaders);
         }
         const origin = url.origin;
 
+        // Redirect targets are built here rather than taken from the body: a caller
+        // supplying its own would turn a checkout link into an open redirect through
+        // the Stripe domain.
         const params = new URLSearchParams();
         params.append('mode', 'subscription');
         params.append('line_items[0][price]', priceId);
         params.append('line_items[0][quantity]', '1');
-        params.append('success_url', successUrl || `${origin}/?checkout=success&plan=${planId || 'pro'}`);
-        params.append('cancel_url', cancelUrl || `${origin}/?checkout=cancel`);
+        params.append('success_url', `${origin}/?checkout=success&plan=${plan.id}`);
+        params.append('cancel_url', `${origin}/?checkout=cancel`);
         if (userEmail) params.append('customer_email', userEmail);
         if (userId) params.append('client_reference_id', userId);
-        params.append('metadata[planId]', planId || 'pro');
+        params.append('metadata[planId]', plan.id);
 
         const stripeRes = await fetch('https://api.stripe.com/v1/checkout/sessions', {
           method: 'POST',
@@ -317,21 +330,16 @@ export default {
 
         const data: any = await stripeRes.json();
         if (!stripeRes.ok || !data.url) {
-          return new Response(JSON.stringify({ error: data.error?.message || 'Failed to create Stripe checkout session' }), {
-            status: stripeRes.status,
-            headers: { 'Content-Type': 'application/json', ...corsHeaders }
-          });
+          // Stripe's message can name internal account state, so it is logged rather
+          // than returned.
+          console.error(`[checkout] stripe rejected the session: ${data.error?.message ?? stripeRes.status}`);
+          return json({ error: 'checkout_failed' }, 502, corsHeaders);
         }
 
-        return new Response(JSON.stringify({ url: data.url, id: data.id }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json', ...corsHeaders }
-        });
+        return json({ url: data.url, id: data.id }, 200, corsHeaders);
       } catch (err: any) {
-        return new Response(JSON.stringify({ error: err.message }), {
-          status: 500,
-          headers: { 'Content-Type': 'application/json', ...corsHeaders }
-        });
+        console.error(`[checkout] ${err?.message}`);
+        return json({ error: 'checkout_failed' }, 500, corsHeaders);
       }
     }
 

@@ -357,21 +357,36 @@ async function resolvePurchasedPlan(
   subscriptionId: string | null,
   fetchSubscription?: SubscriptionFetcher,
 ) {
-  // Primary: metadata we set ourselves in /api/checkout.
   const fromMetadata = planById(session.metadata?.planId);
-  if (fromMetadata && fromMetadata.id !== FREE_PLAN) return fromMetadata;
 
-  // Secondary: a price on the session, if it happens to be expanded.
+  // The price actually paid decides the tier. Metadata used to win here, and
+  // `/api/checkout` copied it from the request body, so a caller could pay for one
+  // tier and name another. `/api/checkout` now derives both from a validated plan,
+  // but money changing hands is the stronger claim and stays authoritative.
   const lineItemPrice = session.line_items?.data?.[0]?.price;
-  const fromLineItem = planForStripePrice(idOf(lineItemPrice), idOf(lineItemPrice?.product));
-  if (fromLineItem) return fromLineItem;
+  let fromPrice = planForStripePrice(idOf(lineItemPrice), idOf(lineItemPrice?.product));
 
-  // Fallback: ask Stripe what was actually subscribed to.
-  if (subscriptionId && fetchSubscription) {
+  if (!fromPrice && subscriptionId && fetchSubscription) {
     const subscription = await fetchSubscription(subscriptionId);
     const price = subscription?.items?.data?.[0]?.price;
-    return planForStripePrice(idOf(price), idOf(price?.product));
+    fromPrice = planForStripePrice(idOf(price), idOf(price?.product));
   }
+
+  if (fromPrice) {
+    if (fromMetadata && fromMetadata.id !== fromPrice.id) {
+      // Not reachable through our own checkout endpoint. Worth shouting about.
+      console.error(
+        `[stripe-webhook] plan mismatch on ${session.id ?? 'unknown session'}: ` +
+        `metadata says ${fromMetadata.id}, price says ${fromPrice.id} — honouring the price`,
+      );
+    }
+    return fromPrice;
+  }
+
+  // No price to read: Stripe did not expand the line items and there is no
+  // subscription to query. Metadata is all that is left, and `/api/checkout` only
+  // ever writes a validated tier into it.
+  if (fromMetadata && fromMetadata.id !== FREE_PLAN) return fromMetadata;
 
   return null;
 }

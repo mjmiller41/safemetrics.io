@@ -4,7 +4,9 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-import { FREE_PLAN, PLANS, eventLimitFor, planById, planForStripePrice } from './plans.ts';
+import {
+  FREE_PLAN, PLANS, eventLimitFor, planById, planForStripePrice, priceForPlan, priceIdsFor,
+} from './plans.ts';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -30,11 +32,10 @@ test('worker plan ids stay in sync with src/lib/stripe-prices.json', () => {
     assert.ok(plan, `worker/plans.ts is missing the '${planId}' tier`);
 
     assert.equal(plan.productId, entry.productId, `${planId} productId drifted`);
-    assert.deepEqual(
-      [...plan.priceIds].sort(),
-      [entry.monthlyPriceId, entry.yearlyPriceId].sort(),
-      `${planId} price ids drifted`,
-    );
+    // Compared per interval, not as a sorted set: /api/checkout picks the price from
+    // the interval, so a monthly/yearly swap would silently bill the wrong amount.
+    assert.equal(plan.monthlyPriceId, entry.monthlyPriceId, `${planId} monthly price drifted`);
+    assert.equal(plan.yearlyPriceId, entry.yearlyPriceId, `${planId} yearly price drifted`);
   }
 
   // Every paid tier in the worker must exist in the checkout config too.
@@ -49,6 +50,21 @@ test('maps both monthly and yearly prices to the right tier', () => {
     assert.equal(planForStripePrice(entry.monthlyPriceId)?.id, planId);
     assert.equal(planForStripePrice(entry.yearlyPriceId)?.id, planId);
   }
+});
+
+test('resolves the price to charge from the tier and interval', () => {
+  for (const [planId, entry] of Object.entries(stripePrices)) {
+    const plan = planById(planId)!;
+    assert.equal(priceForPlan(plan, 'month'), entry.monthlyPriceId);
+    assert.equal(priceForPlan(plan, 'year'), entry.yearlyPriceId);
+  }
+});
+
+test('the free tier has no purchasable price', () => {
+  const free = planById(FREE_PLAN)!;
+  assert.deepEqual(priceIdsFor(free), []);
+  assert.equal(priceForPlan(free, 'month'), null);
+  assert.equal(priceForPlan(free, 'year'), null);
 });
 
 test('falls back to the product id when the price is unknown', () => {
