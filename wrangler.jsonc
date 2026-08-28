@@ -18,6 +18,17 @@
   "vars": {
     "CLERK_ISSUER": "https://noted-civet-6994.clerk.accounts.dev"
   },
+  // Per-IP throttle on POST /api/event. That endpoint is unauthenticated and
+  // writes a D1 row per call, so without this a single script can grow the
+  // database — and the bill — without bound. 60/minute per (ip, domain) is far
+  // above what a human browsing a site produces.
+  "ratelimits": [
+    {
+      "name": "EVENT_RATE_LIMIT",
+      "namespace_id": "1001",
+      "simple": { "limit": 60, "period": 60 }
+    }
+  ],
   "d1_databases": [
     {
       "binding": "DB",

@@ -16,12 +16,15 @@ export type PlanId = 'hobby' | 'pro' | 'scale';
 /** Tier a tenant falls back to when there is no paid, non-delinquent subscription. */
 export const FREE_PLAN: PlanId = 'hobby';
 
+export type BillingInterval = 'month' | 'year';
+
 export interface PlanDefinition {
   id: PlanId;
   /** Stripe product id, or null for the un-purchasable free tier. */
   productId: string | null;
-  /** Every Stripe price (monthly and yearly) that grants this tier. */
-  priceIds: string[];
+  /** Null for the free tier, which cannot be bought. */
+  monthlyPriceId: string | null;
+  yearlyPriceId: string | null;
   monthlyEventLimit: number;
 }
 
@@ -29,22 +32,42 @@ export const PLANS: readonly PlanDefinition[] = [
   {
     id: 'hobby',
     productId: null,
-    priceIds: [],
+    monthlyPriceId: null,
+    yearlyPriceId: null,
     monthlyEventLimit: 10_000,
   },
   {
     id: 'pro',
     productId: 'prod_V6QqyssPLNeRlG',
-    priceIds: ['price_1U6Dz4PBWBDAqxdymkxssdMb', 'price_1U6Dz5PBWBDAqxdy4cVoNgWW'],
+    monthlyPriceId: 'price_1U6Dz4PBWBDAqxdymkxssdMb',
+    yearlyPriceId: 'price_1U6Dz5PBWBDAqxdy4cVoNgWW',
     monthlyEventLimit: 250_000,
   },
   {
     id: 'scale',
     productId: 'prod_V6QqyyUstlYJqe',
-    priceIds: ['price_1U6Dz6PBWBDAqxdyNXNm7hRO', 'price_1U6Dz6PBWBDAqxdylcp9SfZc'],
+    monthlyPriceId: 'price_1U6Dz6PBWBDAqxdyNXNm7hRO',
+    yearlyPriceId: 'price_1U6Dz6PBWBDAqxdylcp9SfZc',
     monthlyEventLimit: 2_500_000,
   },
 ];
+
+/** Every Stripe price that grants this tier. */
+export function priceIdsFor(plan: PlanDefinition): string[] {
+  return [plan.monthlyPriceId, plan.yearlyPriceId].filter((id): id is string => id !== null);
+}
+
+/**
+ * The price to charge for a tier at a given interval.
+ *
+ * `/api/checkout` resolves the price through here rather than accepting one from
+ * the caller. Letting the client name the price would let it pick any price on the
+ * Stripe account — including a cheaper one attached to the same product — and still
+ * be granted the tier it asked for.
+ */
+export function priceForPlan(plan: PlanDefinition, interval: BillingInterval): string | null {
+  return interval === 'year' ? plan.yearlyPriceId : plan.monthlyPriceId;
+}
 
 export function planById(id: string | null | undefined): PlanDefinition | null {
   if (!id) return null;
@@ -60,7 +83,7 @@ export function planForStripePrice(
   productId?: string | null,
 ): PlanDefinition | null {
   if (priceId) {
-    const byPrice = PLANS.find((plan) => plan.priceIds.includes(priceId));
+    const byPrice = PLANS.find((plan) => priceIdsFor(plan).includes(priceId));
     if (byPrice) return byPrice;
   }
 

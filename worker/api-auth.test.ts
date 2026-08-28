@@ -12,6 +12,7 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 import worker from './index.ts';
 import { resetJwksCache } from './clerk-auth.ts';
 import { claimDomain } from './tenancy.ts';
+import { planById } from './plans.ts';
 import { createTestDatabase, type FakeD1 } from './test-support/d1-fake.ts';
 import { createTestKeyPair, signTestToken, TEST_ISSUER } from './test-support/clerk-jwt.ts';
 
@@ -50,12 +51,23 @@ function authed(token: string, init: RequestInit = {}): RequestInit {
   return { ...init, headers: { ...(init.headers as any), Authorization: `Bearer ${token}` } };
 }
 
+/** Form bodies the worker sent to Stripe, so tests can assert what was charged. */
+let stripeRequests: URLSearchParams[] = [];
+
 beforeEach(() => {
   resetJwksCache();
-  globalThis.fetch = (async (input: any) => {
+  stripeRequests = [];
+  globalThis.fetch = (async (input: any, init?: any) => {
     const url = String(input?.url ?? input);
     if (url === `${TEST_ISSUER}/.well-known/jwks.json`) {
       return new Response(JSON.stringify(key.jwks), { headers: { 'Content-Type': 'application/json' } });
+    }
+    if (url === 'https://api.stripe.com/v1/checkout/sessions') {
+      stripeRequests.push(new URLSearchParams(String(init?.body ?? '')));
+      return new Response(
+        JSON.stringify({ url: 'https://checkout.stripe.com/c/pay/cs_test_1', id: 'cs_test_1' }),
+        { headers: { 'Content-Type': 'application/json' } },
+      );
     }
     throw new Error(`unexpected fetch to ${url}`);
   }) as typeof fetch;
@@ -293,6 +305,223 @@ describe('POST /api/checkout', () => {
     assert.equal(sent!.get('customer_email'), 'buyer@acme.test');
     // And the buyer now exists in D1, so the webhook can resolve the tenant.
     assert.ok(db.one('SELECT id FROM users WHERE id = ?', 'user_buyer'));
+  });
+
+  /**
+   * A caller used to send `priceId` and `planId` independently, and the webhook
+   * trusted `planId` over the price. Paying the `pro` price while naming `scale`
+   * granted `scale`. Both now derive from one looked-up plan.
+   */
+  it('charges the price for the requested tier, ignoring any priceId in the body', async () => {
+    const token = await signTestToken(key, { sub: 'user_buyer' });
+
+    const response = await call(
+      envFor(createTestDatabase(), { STRIPE_SECRET_KEY: 'sk_test_x' }),
+      '/api/checkout',
+      authed(token, {
+        method: 'POST',
+        // Pays for pro, asks to be granted scale.
+        body: JSON.stringify({ planId: 'scale', priceId: planById('pro')!.monthlyPriceId }),
+      }),
+    );
+
+    assert.equal(response.status, 200);
+    const sent = stripeRequests[0];
+    assert.equal(sent.get('line_items[0][price]'), planById('scale')!.monthlyPriceId);
+    assert.equal(sent.get('metadata[planId]'), 'scale');
+  });
+
+  it('uses the yearly price when the yearly interval is requested', async () => {
+    const token = await signTestToken(key, { sub: 'user_buyer' });
+
+    await call(
+      envFor(createTestDatabase(), { STRIPE_SECRET_KEY: 'sk_test_x' }),
+      '/api/checkout',
+      authed(token, { method: 'POST', body: JSON.stringify({ planId: 'pro', interval: 'year' }) }),
+    );
+
+    assert.equal(stripeRequests[0].get('line_items[0][price]'), planById('pro')!.yearlyPriceId);
+  });
+
+  it('refuses a tier that is not a paid plan', async () => {
+    const token = await signTestToken(key, { sub: 'user_buyer' });
+
+    for (const planId of ['enterprise', 'hobby', '', null]) {
+      const response = await call(
+        envFor(createTestDatabase(), { STRIPE_SECRET_KEY: 'sk_test_x' }),
+        '/api/checkout',
+        authed(token, { method: 'POST', body: JSON.stringify({ planId }) }),
+      );
+      assert.equal(response.status, 400, `planId ${JSON.stringify(planId)} should be rejected`);
+      assert.equal((await response.json() as any).error, 'unknown_plan');
+    }
+
+    assert.equal(stripeRequests.length, 0, 'nothing should reach Stripe');
+  });
+
+  it('builds its own redirect URLs rather than taking them from the caller', async () => {
+    const token = await signTestToken(key, { sub: 'user_buyer' });
+
+    await call(
+      envFor(createTestDatabase(), { STRIPE_SECRET_KEY: 'sk_test_x' }),
+      '/api/checkout',
+      authed(token, {
+        method: 'POST',
+        body: JSON.stringify({
+          planId: 'pro',
+          successUrl: 'https://evil.test/thanks',
+          cancelUrl: 'https://evil.test/cancel',
+        }),
+      }),
+    );
+
+    const sent = stripeRequests[0];
+    assert.equal(sent.get('success_url'), 'https://safemetrics.io/?checkout=success&plan=pro');
+    assert.equal(sent.get('cancel_url'), 'https://safemetrics.io/?checkout=cancel');
+  });
+
+  it('does not hand Stripe’s error text back to the caller', async () => {
+    const token = await signTestToken(key, { sub: 'user_buyer' });
+    const jwksFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: any, init?: RequestInit) => {
+      const url = String(input?.url ?? input);
+      if (url === 'https://api.stripe.com/v1/checkout/sessions') {
+        return new Response(JSON.stringify({ error: { message: 'No such price: acct_1U5ATy internals' } }), { status: 400 });
+      }
+      return jwksFetch(input, init);
+    }) as typeof fetch;
+
+    const response = await call(
+      envFor(createTestDatabase(), { STRIPE_SECRET_KEY: 'sk_test_x' }),
+      '/api/checkout',
+      authed(token, { method: 'POST', body: JSON.stringify({ planId: 'pro' }) }),
+    );
+
+    const body = await response.text();
+    assert.equal(response.status, 502);
+    assert.ok(!body.includes('acct_1U5ATy'), 'Stripe account internals must not be echoed');
+    assert.equal(JSON.parse(body).error, 'checkout_failed');
+  });
+});
+
+describe('POST /api/event', () => {
+  const beacon = (domain: string) => ({
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify({ n: 'pageview', d: domain, u: `https://${domain}/` }),
+  });
+
+  const eventCount = (db: FakeD1) =>
+    db.one<{ n: number }>('SELECT COUNT(*) AS n FROM events')!.n;
+
+  it('records the event and bumps the tenant usage counter', async () => {
+    const db = createTestDatabase();
+    await claimDomain(db as any, 'tenant_acme', 'acme.test');
+
+    const response = await call(envFor(db), '/api/event', beacon('acme.test'));
+
+    assert.equal(response.status, 200);
+    assert.equal(eventCount(db), 1);
+    assert.equal(
+      db.one<{ events: number }>('SELECT events FROM tenant_usage WHERE tenant_id = ?', 'tenant_acme')!.events,
+      1,
+    );
+  });
+
+  it('stops writing once the tenant is over its monthly allowance', async () => {
+    const db = createTestDatabase();
+    db.sqlite.prepare('UPDATE tenants SET monthly_event_limit = 1 WHERE id = ?').run('tenant_acme');
+    await claimDomain(db as any, 'tenant_acme', 'acme.test');
+
+    const first = await call(envFor(db), '/api/event', beacon('acme.test'));
+    assert.equal(first.status, 200);
+
+    const second = await call(envFor(db), '/api/event', beacon('acme.test'));
+    // 202, not an error: a visitor to a customer's site must never see a failure
+    // caused by that customer's billing.
+    assert.equal(second.status, 202);
+    assert.equal((await second.json() as any).reason, 'quota_exceeded');
+    assert.equal(eventCount(db), 1, 'the rejected beacon must not reach the events table');
+  });
+
+  it('rejects with 429 when the per-IP limiter says so, before touching the database', async () => {
+    const db = createTestDatabase();
+    await claimDomain(db as any, 'tenant_acme', 'acme.test');
+
+    const env = envFor(db, { EVENT_RATE_LIMIT: { limit: async () => ({ success: false }) } });
+    const response = await call(env, '/api/event', beacon('acme.test'));
+
+    assert.equal(response.status, 429);
+    assert.equal(response.headers.get('Retry-After'), '60');
+    assert.equal(eventCount(db), 0);
+  });
+
+  it('still accepts traffic when no limiter is bound', async () => {
+    const db = createTestDatabase();
+    await claimDomain(db as any, 'tenant_acme', 'acme.test');
+
+    const response = await call(envFor(db, { EVENT_RATE_LIMIT: undefined }), '/api/event', beacon('acme.test'));
+    assert.equal(response.status, 200);
+  });
+});
+
+describe('CORS', () => {
+  it('lets any origin post to the public beacon, but never with credentials', async () => {
+    const db = createTestDatabase();
+    await claimDomain(db as any, 'tenant_acme', 'acme.test');
+
+    const response = await call(envFor(db), '/api/event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain', Origin: 'https://a-customer-site.test' },
+      body: JSON.stringify({ n: 'pageview', d: 'acme.test', u: 'https://acme.test/' }),
+    });
+
+    assert.equal(response.headers.get('Access-Control-Allow-Origin'), '*');
+    const allowedHeaders = response.headers.get('Access-Control-Allow-Headers') ?? '';
+    assert.ok(
+      !allowedHeaders.toLowerCase().includes('authorization'),
+      'the wildcard policy must not also permit credentialed requests',
+    );
+  });
+
+  it('grants no cross-origin access to the authenticated API', async () => {
+    const token = await signTestToken(key, { sub: 'user_clerk_123' });
+
+    const response = await call(envFor(createTestDatabase()), '/api/me', authed(token, {
+      headers: { Origin: 'https://evil.test' },
+    }));
+
+    assert.equal(response.status, 200, 'the request itself still succeeds server-side');
+    assert.equal(
+      response.headers.get('Access-Control-Allow-Origin'),
+      null,
+      'but the browser is never told the response may be read cross-origin',
+    );
+    assert.equal(response.headers.get('Vary'), 'Origin');
+  });
+
+  it('allows the dashboard on its own origin', async () => {
+    const token = await signTestToken(key, { sub: 'user_clerk_123' });
+
+    const response = await call(envFor(createTestDatabase()), '/api/me', authed(token, {
+      headers: { Origin: 'https://safemetrics.io' },
+    }));
+
+    assert.equal(response.headers.get('Access-Control-Allow-Origin'), 'https://safemetrics.io');
+  });
+
+  it('answers preflight for both surfaces with the right policy', async () => {
+    const env = envFor(createTestDatabase());
+
+    const beaconPreflight = await call(env, '/api/event', {
+      method: 'OPTIONS', headers: { Origin: 'https://a-customer-site.test' },
+    });
+    assert.equal(beaconPreflight.headers.get('Access-Control-Allow-Origin'), '*');
+
+    const apiPreflight = await call(env, '/api/stats', {
+      method: 'OPTIONS', headers: { Origin: 'https://evil.test' },
+    });
+    assert.equal(apiPreflight.headers.get('Access-Control-Allow-Origin'), null);
   });
 });
 

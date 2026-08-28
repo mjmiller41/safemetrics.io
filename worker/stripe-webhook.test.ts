@@ -220,6 +220,23 @@ test('activates the Scale tier, which the original plan CHECK constraint forbade
   assert.equal(tenant(db).monthly_event_limit, 2_500_000);
 });
 
+test('grants the tier that was paid for, not the one named in metadata', async () => {
+  const db = createTestDatabase();
+
+  // A session paying the Pro price while claiming Scale. `/api/checkout` derives
+  // both from one looked-up plan so it cannot produce this any more, but metadata
+  // travels through Stripe and the money is the stronger claim either way.
+  const result = await deliver(
+    db,
+    checkoutEvent({ metadata: { planId: 'scale' } }),
+    { fetchSubscription: async () => ({ items: { data: [{ price: { id: PRO_MONTHLY } }] } }) },
+  );
+
+  assert.equal(result.status, 200);
+  assert.equal(tenant(db).plan, 'pro');
+  assert.equal(tenant(db).monthly_event_limit, 250_000);
+});
+
 test('resolves the tenant from a Clerk user id in client_reference_id', async () => {
   const db = createTestDatabase();
 
