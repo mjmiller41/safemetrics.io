@@ -404,6 +404,127 @@ describe('POST /api/checkout', () => {
   });
 });
 
+describe('POST /api/event', () => {
+  const beacon = (domain: string) => ({
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify({ n: 'pageview', d: domain, u: `https://${domain}/` }),
+  });
+
+  const eventCount = (db: FakeD1) =>
+    db.one<{ n: number }>('SELECT COUNT(*) AS n FROM events')!.n;
+
+  it('records the event and bumps the tenant usage counter', async () => {
+    const db = createTestDatabase();
+    await claimDomain(db as any, 'tenant_acme', 'acme.test');
+
+    const response = await call(envFor(db), '/api/event', beacon('acme.test'));
+
+    assert.equal(response.status, 200);
+    assert.equal(eventCount(db), 1);
+    assert.equal(
+      db.one<{ events: number }>('SELECT events FROM tenant_usage WHERE tenant_id = ?', 'tenant_acme')!.events,
+      1,
+    );
+  });
+
+  it('stops writing once the tenant is over its monthly allowance', async () => {
+    const db = createTestDatabase();
+    db.sqlite.prepare('UPDATE tenants SET monthly_event_limit = 1 WHERE id = ?').run('tenant_acme');
+    await claimDomain(db as any, 'tenant_acme', 'acme.test');
+
+    const first = await call(envFor(db), '/api/event', beacon('acme.test'));
+    assert.equal(first.status, 200);
+
+    const second = await call(envFor(db), '/api/event', beacon('acme.test'));
+    // 202, not an error: a visitor to a customer's site must never see a failure
+    // caused by that customer's billing.
+    assert.equal(second.status, 202);
+    assert.equal((await second.json() as any).reason, 'quota_exceeded');
+    assert.equal(eventCount(db), 1, 'the rejected beacon must not reach the events table');
+  });
+
+  it('rejects with 429 when the per-IP limiter says so, before touching the database', async () => {
+    const db = createTestDatabase();
+    await claimDomain(db as any, 'tenant_acme', 'acme.test');
+
+    const env = envFor(db, { EVENT_RATE_LIMIT: { limit: async () => ({ success: false }) } });
+    const response = await call(env, '/api/event', beacon('acme.test'));
+
+    assert.equal(response.status, 429);
+    assert.equal(response.headers.get('Retry-After'), '60');
+    assert.equal(eventCount(db), 0);
+  });
+
+  it('still accepts traffic when no limiter is bound', async () => {
+    const db = createTestDatabase();
+    await claimDomain(db as any, 'tenant_acme', 'acme.test');
+
+    const response = await call(envFor(db, { EVENT_RATE_LIMIT: undefined }), '/api/event', beacon('acme.test'));
+    assert.equal(response.status, 200);
+  });
+});
+
+describe('CORS', () => {
+  it('lets any origin post to the public beacon, but never with credentials', async () => {
+    const db = createTestDatabase();
+    await claimDomain(db as any, 'tenant_acme', 'acme.test');
+
+    const response = await call(envFor(db), '/api/event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain', Origin: 'https://a-customer-site.test' },
+      body: JSON.stringify({ n: 'pageview', d: 'acme.test', u: 'https://acme.test/' }),
+    });
+
+    assert.equal(response.headers.get('Access-Control-Allow-Origin'), '*');
+    const allowedHeaders = response.headers.get('Access-Control-Allow-Headers') ?? '';
+    assert.ok(
+      !allowedHeaders.toLowerCase().includes('authorization'),
+      'the wildcard policy must not also permit credentialed requests',
+    );
+  });
+
+  it('grants no cross-origin access to the authenticated API', async () => {
+    const token = await signTestToken(key, { sub: 'user_clerk_123' });
+
+    const response = await call(envFor(createTestDatabase()), '/api/me', authed(token, {
+      headers: { Origin: 'https://evil.test' },
+    }));
+
+    assert.equal(response.status, 200, 'the request itself still succeeds server-side');
+    assert.equal(
+      response.headers.get('Access-Control-Allow-Origin'),
+      null,
+      'but the browser is never told the response may be read cross-origin',
+    );
+    assert.equal(response.headers.get('Vary'), 'Origin');
+  });
+
+  it('allows the dashboard on its own origin', async () => {
+    const token = await signTestToken(key, { sub: 'user_clerk_123' });
+
+    const response = await call(envFor(createTestDatabase()), '/api/me', authed(token, {
+      headers: { Origin: 'https://safemetrics.io' },
+    }));
+
+    assert.equal(response.headers.get('Access-Control-Allow-Origin'), 'https://safemetrics.io');
+  });
+
+  it('answers preflight for both surfaces with the right policy', async () => {
+    const env = envFor(createTestDatabase());
+
+    const beaconPreflight = await call(env, '/api/event', {
+      method: 'OPTIONS', headers: { Origin: 'https://a-customer-site.test' },
+    });
+    assert.equal(beaconPreflight.headers.get('Access-Control-Allow-Origin'), '*');
+
+    const apiPreflight = await call(env, '/api/stats', {
+      method: 'OPTIONS', headers: { Origin: 'https://evil.test' },
+    });
+    assert.equal(apiPreflight.headers.get('Access-Control-Allow-Origin'), null);
+  });
+});
+
 async function currentTenant(db: FakeD1, userId: string): Promise<string> {
   return db.one<{ tenant_id: string }>('SELECT tenant_id FROM users WHERE id = ?', userId)!.tenant_id;
 }

@@ -91,6 +91,7 @@ export function createTestDatabase(): FakeD1 {
     'migrations/0002_stripe_billing.sql',
     'migrations/0003_fix_plan_check_constraint.sql',
     'migrations/0004_unique_domain_name.sql',
+    'migrations/0005_tenant_usage.sql',
   ]) {
     sqlite.exec(readFileSync(join(repoRoot, file), 'utf8'));
   }

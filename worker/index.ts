@@ -3,6 +3,7 @@ import { bearerTokenFrom, verifyClerkToken, type AuthFailureReason } from './cle
 import { claimDomain, ensureTenantForUser, findDomain, listDomains, normalizeDomain, type TenantContext } from './tenancy.ts';
 import { isTimeframe, loadDomainStats, TIMEFRAMES, type Timeframe } from './stats.ts';
 import { FREE_PLAN, planById, priceForPlan, type BillingInterval } from './plans.ts';
+import { isOverQuota, loadDomainQuota, recordUsage, usagePeriod } from './quota.ts';
 
 export interface Env {
   DB: D1Database;
@@ -19,6 +20,17 @@ export interface Env {
   CLERK_ISSUER?: string;
   /** Salt for the daily visitor hash. Set with `wrangler secret put SESSION_SALT`. */
   SESSION_SALT?: string;
+  /**
+   * Per-IP throttle on the public ingestion endpoint. Optional so tests and
+   * `wrangler dev` run without it; when absent, ingestion is limited only by the
+   * per-tenant monthly quota.
+   */
+  EVENT_RATE_LIMIT?: RateLimiter;
+}
+
+/** The subset of Cloudflare's rate limiting binding that this worker uses. */
+interface RateLimiter {
+  limit(options: { key: string }): Promise<{ success: boolean }>;
 }
 
 /** HTTP status for each way authentication can fail. */
@@ -40,15 +52,25 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
-    // CORS Headers for public beacon ingestion
-    const corsHeaders = {
+    // The beacon is embedded on arbitrary customer sites, so ingestion has to accept
+    // any origin. Note it never carries credentials: `Authorization` is deliberately
+    // absent from the allowed headers, so a page cannot use this permissive policy
+    // to make an authenticated call.
+    const publicCorsHeaders = {
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
     };
 
+    // Everything else is the dashboard talking to its own API. The SPA is served
+    // from this same origin, so no cross-origin caller has a reason to reach these,
+    // and one is never granted permission to. Requests carry a bearer token rather
+    // than a cookie, so this is defence in depth rather than the only control.
+    const corsHeaders = appCorsHeaders(request, url);
+
     if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: corsHeaders });
+      const headers = url.pathname === '/api/event' ? publicCorsHeaders : corsHeaders;
+      return new Response(null, { headers });
     }
 
     // 0. Health Endpoint: GET /api/health
@@ -71,6 +93,10 @@ export default {
         service: 'safemetrics-app',
         worker: true,
         database,
+        // Whether the ingestion throttle is actually bound. A misconfigured binding
+        // fails open — traffic keeps flowing — so without this the only symptom of
+        // losing the throttle is a surprising bill.
+        rateLimiter: env.EVENT_RATE_LIMIT ? 'bound' : 'unbound',
       }), {
         status: database === 'ok' ? 200 : 503,
         headers: { 'Content-Type': 'application/json', ...corsHeaders }
@@ -90,12 +116,28 @@ export default {
         if (!domainName) {
           return new Response(JSON.stringify({ error: 'Missing domain' }), {
             status: 400,
-            headers: { 'Content-Type': 'application/json', ...corsHeaders }
+            headers: { 'Content-Type': 'application/json', ...publicCorsHeaders }
           });
         }
 
         // Anonymized daily rotating hash (IP + User-Agent + Daily Salt)
         const clientIp = request.headers.get('cf-connecting-ip') || '127.0.0.1';
+
+        // Per-IP throttle, before any database work. Ingestion is unauthenticated
+        // and writes a row per call, so this is the only thing between a script and
+        // an unbounded D1 bill. Keyed per (ip, domain) so one abusive source cannot
+        // exhaust the allowance of a site it does not own, and set high enough that
+        // no human browsing a site will reach it.
+        if (env.EVENT_RATE_LIMIT) {
+          const { success } = await env.EVENT_RATE_LIMIT.limit({ key: `${clientIp}:${domainName}` });
+          if (!success) {
+            return new Response(JSON.stringify({ ok: false, reason: 'rate_limited' }), {
+              status: 429,
+              headers: { 'Content-Type': 'application/json', 'Retry-After': '60', ...publicCorsHeaders }
+            });
+          }
+        }
+
         const userAgent = request.headers.get('user-agent') || 'Unknown';
         const today = new Date().toISOString().split('T')[0];
         // The salt is what stops the visitor hash from being a reversible lookup of
@@ -139,16 +181,26 @@ export default {
         // Unknown domains are now dropped: 202 rather than an error, because the
         // beacon is fire-and-forget and a misconfigured site should not fill a
         // visitor's console with failures.
-        const domainRecord = await findDomain(env.DB, domainName);
-        if (!domainRecord) {
+        // Resolves the domain, its tenant, that tenant's ceiling and its usage so far
+        // in one query — this is the busiest read in the system.
+        const period = usagePeriod(Date.now());
+        const quota = await loadDomainQuota(env.DB, normalizeDomain(domainName) ?? domainName, period);
+        if (!quota) {
           return new Response(JSON.stringify({ ok: false, reason: 'domain_not_registered' }), {
             status: 202,
-            headers: { 'Content-Type': 'application/json', ...corsHeaders }
+            headers: { 'Content-Type': 'application/json', ...publicCorsHeaders }
           });
         }
 
-        const tenantId = domainRecord.tenant_id;
-        const domainId = domainRecord.id;
+        // Over the plan's monthly allowance. Answered 202 like an unregistered
+        // domain: the beacon can do nothing about it, and a visitor to a customer's
+        // site should never see an error caused by that customer's billing.
+        if (isOverQuota(quota)) {
+          return new Response(JSON.stringify({ ok: false, reason: 'quota_exceeded' }), {
+            status: 202,
+            headers: { 'Content-Type': 'application/json', ...publicCorsHeaders }
+          });
+        }
 
         // Insert event record
         const eventId = `evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -157,13 +209,14 @@ export default {
             INSERT INTO events (id, tenant_id, domain_id, event_type, event_name, url_path, referrer, country, city, device, browser, os, session_hash)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).bind(
-            eventId, tenantId, domainId, 'pageview', eventName, path, referrer, country, city, device, browser, os, sessionHash
+            eventId, quota.tenantId, quota.domainId, 'pageview', eventName, path, referrer, country, city, device, browser, os, sessionHash
           ).run()
         );
+        ctx.waitUntil(recordUsage(env.DB, quota.tenantId, period));
 
         return new Response(JSON.stringify({ ok: true }), {
           status: 200,
-          headers: { 'Content-Type': 'application/json', ...corsHeaders }
+          headers: { 'Content-Type': 'application/json', ...publicCorsHeaders }
         });
       } catch (err: any) {
         // The beacon is public and unauthenticated, so the reason stays in the logs
@@ -171,7 +224,7 @@ export default {
         console.error(`[event] ${err?.message}`);
         return new Response(JSON.stringify({ error: 'ingest_failed' }), {
           status: 500,
-          headers: { 'Content-Type': 'application/json', ...corsHeaders }
+          headers: { 'Content-Type': 'application/json', ...publicCorsHeaders }
         });
       }
     }
@@ -357,6 +410,29 @@ export default {
   }
 };
 
+/**
+ * CORS headers for the dashboard API.
+ *
+ * Only this worker's own origin is ever granted access. Same-origin requests are
+ * not subject to CORS at all, so the practical effect is that a third-party page
+ * gets no permission — where a wildcard would have handed it one.
+ *
+ * `Vary: Origin` is always set so a cached response for one origin is never reused
+ * for another.
+ */
+function appCorsHeaders(request: Request, url: URL): Record<string, string> {
+  const origin = request.headers.get('origin');
+  if (origin && origin === url.origin) {
+    return {
+      'Access-Control-Allow-Origin': origin,
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Vary': 'Origin',
+    };
+  }
+  return { 'Vary': 'Origin' };
+}
+
 type Authenticated =
   | { ok: true; context: TenantContext; email: string | null }
   | { ok: false; response: Response };
@@ -367,11 +443,7 @@ type Authenticated =
  * on whichever request the user makes first.
  */
 async function authenticate(request: Request, env: Env): Promise<Authenticated> {
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  };
+  const corsHeaders = appCorsHeaders(request, new URL(request.url));
 
   const verification = await verifyClerkToken({
     token: bearerTokenFrom(request),
