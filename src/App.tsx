@@ -10,6 +10,8 @@ import {
 } from 'lucide-react';
 import { redirectToCheckout } from './lib/stripe';
 import { addDomain, fetchAccount } from './lib/account';
+import { ROUTES, sectionHref, useRoute } from './lib/router';
+import StatsPage from './components/StatsPage';
 
 interface RouteData {
   path: string;
@@ -108,6 +110,7 @@ interface AppProps {
 }
 
 export default function App({ hasClerk = false, isSignedIn = false, getToken }: AppProps) {
+  const { path, navigate } = useRoute();
   const [selectedDomain, setSelectedDomain] = useState('example.com');
   const [timeframe, setTimeframe] = useState<'24h' | '7d' | '30d' | 'all'>('7d');
   const [activeTab, setActiveTab] = useState<'routes' | 'sources' | 'geo' | 'goals'>('routes');
@@ -426,13 +429,31 @@ add_action('wp_head', function() {
           </div>
 
           <nav className="hidden md:flex items-center space-x-6 text-sm text-slate-300">
-            <a href="#signal-center" className="hover:text-cyan-400 transition flex items-center gap-1">
+            {/* Your own analytics, only once there is an account to scope them to. */}
+            {isSignedIn && (
+              <a
+                href={ROUTES.stats}
+                onClick={e => { e.preventDefault(); navigate(ROUTES.stats); }}
+                className={`transition flex items-center gap-1 ${
+                  path === ROUTES.stats ? 'text-cyan-400 font-semibold' : 'hover:text-cyan-400'
+                }`}
+              >
+                <BarChart2 className="w-3.5 h-3.5 text-cyan-400" /> My Stats
+              </a>
+            )}
+            <a
+              href={sectionHref(path, 'signal-center')}
+              onClick={e => {
+                if (path !== ROUTES.home) { e.preventDefault(); navigate(ROUTES.home); }
+              }}
+              className="hover:text-cyan-400 transition flex items-center gap-1"
+            >
               <Activity className="w-3.5 h-3.5 text-cyan-400" /> Signal Studio
             </a>
-            <a href="#install" className="hover:text-cyan-400 transition">Install Snippet</a>
-            <a href="#benchmarks" className="hover:text-cyan-400 transition">vs GA4</a>
-            <a href="#calculator" className="hover:text-cyan-400 transition">Speed Impact</a>
-            <a href="#pricing" className="hover:text-cyan-400 transition">Pricing</a>
+            <a href={sectionHref(path, 'install')} className="hover:text-cyan-400 transition">Install Snippet</a>
+            <a href={sectionHref(path, 'benchmarks')} className="hover:text-cyan-400 transition">vs GA4</a>
+            <a href={sectionHref(path, 'calculator')} className="hover:text-cyan-400 transition">Speed Impact</a>
+            <a href={sectionHref(path, 'pricing')} className="hover:text-cyan-400 transition">Pricing</a>
           </nav>
 
           {/* Authentication Actions */}
@@ -483,6 +504,10 @@ add_action('wp_head', function() {
 
       {/* Main Content */}
       <main className="flex-1">
+        {path === ROUTES.stats ? (
+          <StatsPage isSignedIn={isSignedIn} getToken={getToken} />
+        ) : (
+        <>
         {/* Hero Section */}
         <section className="py-16 md:py-24 px-4 relative overflow-hidden text-center">
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[350px] bg-gradient-to-tr from-cyan-600/15 via-indigo-600/15 to-transparent blur-[120px] rounded-full pointer-events-none -z-10" />
@@ -1087,6 +1112,8 @@ add_action('wp_head', function() {
               <X className="w-4 h-4" />
             </button>
           </div>
+        )}
+        </>
         )}
       </main>
 

@@ -1,6 +1,7 @@
 import { handleStripeWebhookRequest } from './stripe-webhook.ts';
 import { bearerTokenFrom, verifyClerkToken, type AuthFailureReason } from './clerk-auth.ts';
 import { claimDomain, ensureTenantForUser, findDomain, listDomains, normalizeDomain, type TenantContext } from './tenancy.ts';
+import { isTimeframe, loadDomainStats, TIMEFRAMES, type Timeframe } from './stats.ts';
 
 export interface Env {
   DB: D1Database;
@@ -232,57 +233,32 @@ export default {
       }
 
       const domainName = requested ? normalizeDomain(requested) : owned[0].domain_name;
-      if (!domainName || !owned.some((domain) => domain.domain_name === domainName)) {
+      const domain = owned.find((entry) => entry.domain_name === domainName);
+      if (!domainName || !domain) {
         return json({ error: 'domain_not_owned' }, 403, corsHeaders);
       }
 
+      const requestedTimeframe = url.searchParams.get('timeframe');
+      if (requestedTimeframe && !isTimeframe(requestedTimeframe)) {
+        return json({ error: 'invalid_timeframe', allowed: TIMEFRAMES }, 400, corsHeaders);
+      }
+      const timeframe: Timeframe = isTimeframe(requestedTimeframe) ? requestedTimeframe : '7d';
+
       try {
-        const stats = await env.DB.prepare(`
-          SELECT 
-            COUNT(DISTINCT session_hash) as unique_visitors,
-            COUNT(*) as total_views
-          FROM events e
-          JOIN domains d ON e.domain_id = d.id
-          WHERE d.domain_name = ?
-        `).bind(domainName).first();
+        // Queried by domain id, not name: the ownership check above resolved the row,
+        // and re-joining on the name would re-derive something already established.
+        const stats = await loadDomainStats(env.DB, domain.id, timeframe, Date.now());
 
-        const topPages = await env.DB.prepare(`
-          SELECT url_path, COUNT(*) as views
-          FROM events e
-          JOIN domains d ON e.domain_id = d.id
-          WHERE d.domain_name = ?
-          GROUP BY url_path
-          ORDER BY views DESC
-          LIMIT 5
-        `).bind(domainName).all();
-
-        const topReferrers = await env.DB.prepare(`
-          SELECT referrer, COUNT(*) as visitors
-          FROM events e
-          JOIN domains d ON e.domain_id = d.id
-          WHERE d.domain_name = ?
-          GROUP BY referrer
-          ORDER BY visitors DESC
-          LIMIT 5
-        `).bind(domainName).all();
-
-        return new Response(JSON.stringify({
+        return json({
           domain: domainName,
           tenantId: auth.context.tenantId,
           plan: auth.context.plan,
           domains: owned.map((entry) => entry.domain_name),
-          stats,
-          topPages: topPages.results,
-          topReferrers: topReferrers.results
-        }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json', ...corsHeaders }
-        });
+          ...stats,
+        }, 200, corsHeaders);
       } catch (err: any) {
-        return new Response(JSON.stringify({ error: err.message }), {
-          status: 500,
-          headers: { 'Content-Type': 'application/json', ...corsHeaders }
-        });
+        console.error(`[stats] ${domainName} (${timeframe}): ${err?.message}`);
+        return json({ error: 'stats_unavailable' }, 500, corsHeaders);
       }
     }
 
