@@ -90,6 +90,35 @@ describe('ensureTenantForUser', () => {
   });
 });
 
+describe('listDomains', () => {
+  it('puts the most recently active site first, whatever the registration order', async () => {
+    const db = createTestDatabase();
+    // `old.test` is registered first but its traffic stopped; `live.test` is current.
+    await claimDomain(db as any, 'tenant_acme', 'old.test');
+    await claimDomain(db as any, 'tenant_acme', 'live.test');
+    await claimDomain(db as any, 'tenant_acme', 'silent.test');
+
+    const idFor = (name: string) =>
+      db.one<{ id: string }>('SELECT id FROM domains WHERE domain_name = ?', name)!.id;
+
+    db.sqlite.prepare(
+      `INSERT INTO events (id, tenant_id, domain_id, event_name, url_path, session_hash, created_at)
+       VALUES (?, 'tenant_acme', ?, 'pageview', '/', 'h', ?)`,
+    ).run('evt_old', idFor('old.test'), '2026-01-01 00:00:00');
+
+    db.sqlite.prepare(
+      `INSERT INTO events (id, tenant_id, domain_id, event_name, url_path, session_hash, created_at)
+       VALUES (?, 'tenant_acme', ?, 'pageview', '/', 'h', ?)`,
+    ).run('evt_live', idFor('live.test'), '2026-08-27 00:00:00');
+
+    assert.deepEqual(
+      (await listDomains(db as any, 'tenant_acme')).map((d) => d.domain_name),
+      ['live.test', 'old.test', 'silent.test'],
+      'sites with no traffic sort last rather than winning on registration date',
+    );
+  });
+});
+
 describe('claimDomain', () => {
   it('registers a normalised domain to the tenant', async () => {
     const db = createTestDatabase();

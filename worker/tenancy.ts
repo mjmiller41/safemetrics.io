@@ -122,9 +122,26 @@ export interface DomainRow {
   tenant_id: string;
 }
 
+/**
+ * The tenant's sites, most recently active first.
+ *
+ * Order matters because the first entry is what the dashboard opens on and what
+ * `/api/stats` falls back to when no domain is named. Ordering by `created_at`
+ * meant the oldest registration won, so an account whose first site went quiet
+ * years ago would open on an empty dashboard while its live site sat one click
+ * away. Sites with no traffic at all sort last, by registration date.
+ */
 export async function listDomains(db: D1Database, tenantId: string): Promise<DomainRow[]> {
   const { results } = await db
-    .prepare('SELECT id, domain_name, tenant_id FROM domains WHERE tenant_id = ? ORDER BY created_at')
+    .prepare(
+      `SELECT d.id, d.domain_name, d.tenant_id
+       FROM domains d
+       LEFT JOIN (
+         SELECT domain_id, MAX(created_at) AS last_event FROM events GROUP BY domain_id
+       ) e ON e.domain_id = d.id
+       WHERE d.tenant_id = ?
+       ORDER BY (e.last_event IS NULL), e.last_event DESC, d.created_at`,
+    )
     .bind(tenantId)
     .all<DomainRow>();
   return results;
